@@ -21,9 +21,9 @@ namespace AutoContinue
         private const float ScanInterval = 0.25f;
 
         private bool _announceEnabled = true;
-        private float _announceDelay;
+        private float _announceDelay = 2f;
         private bool _battleEnabled = true;
-        private float _battleDelay;
+        private float _battleDelay = 1f;
 
         private float _nextScan;
 
@@ -184,11 +184,11 @@ namespace AutoContinue
             "\n" +
             "# 1. 启动后的公告界面：自动点【继续】进入大厅\n" +
             "announce_enabled: true\n" +
-            "announce_delay: 0.0\n" +
+            "announce_delay: 2.0\n" +
             "\n" +
             "# 2. 与 Boss 对决加载完成后底部【点击继续】：自动点击进入对局\n" +
             "battle_enabled: true\n" +
-            "battle_delay: 0.0\n";
+            "battle_delay: 1.0\n";
 
         private static bool ParseBool(string v, bool d)
         {
