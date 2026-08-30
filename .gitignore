@@ -1,4 +1,4 @@
 .env
-*/bin/
-*/obj/
+**/bin/
+**/obj/
 tools/dumptypes/libs/
