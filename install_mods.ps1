@@ -128,31 +128,81 @@ function Parse-Mods([string]$s) {
     return $sel
 }
 
+function Get-WithRetry([string]$url) {
+    try {
+        return Invoke-RestMethod -Headers $script:headers -Uri $url -TimeoutSec 60
+    } catch {
+        Write-Host "  GitHub 直连失败（$($_.Exception.Message)），改走镜像 https://gh.ddlc.top/ ..." -ForegroundColor DarkGray
+        return Invoke-RestMethod -Headers $script:headers -Uri ("https://gh.ddlc.top/" + $url) -TimeoutSec 120
+    }
+}
+
+function Save-WithRetry([string]$url, [string]$out) {
+    try {
+        Invoke-WebRequest -Headers $script:headers -Uri $url -OutFile $out -TimeoutSec 300
+    } catch {
+        Write-Host "  下载失败（$($_.Exception.Message)），改走镜像 https://gh.ddlc.top/ ..." -ForegroundColor DarkGray
+        Invoke-WebRequest -Headers $script:headers -Uri ("https://gh.ddlc.top/" + $url) -OutFile $out -TimeoutSec 600
+    }
+}
+
+function Disable-Console([string]$game) {
+    # 与既有环境一致：隐藏 BepInEx 日志控制台黑窗口（仅影响新装的 BepInEx）
+    $cfg = Join-Path $game "BepInEx\config\BepInEx.cfg"
+    try {
+        if (Test-Path $cfg) {
+            $txt = Get-Content -Raw -Encoding UTF8 $cfg
+            $new = $txt -replace '(?m)^(\s*Enabled\s*=\s*)true(\s*)$', '${1}false${2}'
+            if ($new -ne $txt) {
+                [System.IO.File]::WriteAllText($cfg, $new, (New-Object System.Text.UTF8Encoding $true))
+                Write-Host "  已隐藏 BepInEx 控制台黑窗口（BepInEx.cfg）" -ForegroundColor DarkGray
+            }
+        }
+    } catch {}
+}
+
 function Install-BepInEx([string]$game) {
     $core = Join-Path $game "BepInEx\core\BepInEx.Core.dll"
     if (Test-Path $core) { Write-Host "[依赖] BepInEx 已存在，跳过安装。" -ForegroundColor DarkGray; return $true }
-    Write-Host "[依赖] 未找到 BepInEx，尝试从 GitHub 下载 IL2CPP 版..." -ForegroundColor Yellow
+    Write-Host "[依赖] 未找到 BepInEx，从 GitHub 下载 IL2CPP 版（直连失败自动换镜像）..." -ForegroundColor Yellow
     try {
-        $headers = @{ "User-Agent" = "demonic-mahjong-mod-installer" }
-        $rel = Invoke-RestMethod -Headers $headers -Uri "https://api.github.com/repos/BepInEx/BepInEx/releases/latest"
-        $asset = $rel.assets | Where-Object { $_.name -match '^BepInEx_il2cpp_x64_.*\.zip$' } | Select-Object -First 1
-        if (-not $asset) { throw "未找到 BepInEx IL2CPP x64 资产" }
+        $script:headers = @{ "User-Agent" = "demonic-mahjong-mod-installer" }
+        # BepInEx 6 只作为 prerelease 发布，/releases/latest 只会命中旧版 5.x；
+        # 必须从包含预发行的 releases 列表里，取最早出现的带 IL2CPP Windows x64 包的版本。
+        $rels = Get-WithRetry "https://api.github.com/repos/BepInEx/BepInEx/releases"
+        $asset = $null
+        foreach ($r in @($rels)) {
+            foreach ($a in @($r.assets)) {
+                if (($a.name -match '(?i)il2cpp') -and
+                    ($a.name -match 'x64') -and
+                    ($a.name -match '\.zip$') -and
+                    ($a.name -notmatch 'x86|linux|macos|unix')) {
+                    $asset = $a
+                    break
+                }
+            }
+            if ($asset) { break }
+        }
+        if (-not $asset) { throw "未找到 BepInEx IL2CPP Windows x64 资产" }
         $tmp     = Join-Path $env:TEMP "bepinex_download.zip"
         $tmpDir  = Join-Path $env:TEMP ("bepinex_ex_" + [Guid]::NewGuid().ToString("N"))
-        Write-Host "  下载 $($asset.browser_download_url)" -ForegroundColor DarkGray
-        Invoke-WebRequest -Headers $headers -Uri $asset.browser_download_url -OutFile $tmp
+        Write-Host "  下载 $($asset.name)" -ForegroundColor DarkGray
+        Save-WithRetry $asset.browser_download_url $tmp
         New-Item -ItemType Directory -Path $tmpDir -Force | Out-Null
         Expand-Archive -Path $tmp -DestinationPath $tmpDir -Force
-        # 复制 BepInEx 目录与前置
         Copy-Item (Join-Path $tmpDir "BepInEx") "$game\BepInEx" -Recurse -Force
         foreach ($f in @("winhttp.dll","doorstop_config.ini","dotnet")) {
             $src = Join-Path $tmpDir $f
             if (Test-Path $src) { Copy-Item $src "$game\$f" -Recurse -Force }
         }
+        if (-not (Test-Path (Join-Path $tmpDir "dotnet"))) {
+            Write-Host "  ⚠ 压缩包内没有 dotnet（CoreCLR）—— IL2CPP 运行时可能不完整，启动异常需补 runtime。" -ForegroundColor Yellow
+        }
         Remove-Item $tmp -Force -ErrorAction SilentlyContinue
         Remove-Item $tmpDir -Recurse -Force -ErrorAction SilentlyContinue
         if (-not (Test-Path $core)) { throw "BepInEx 复制后校验失败" }
-        Write-Host "[依赖] BepInEx 安装完成。" -ForegroundColor Green
+        Write-Host "[依赖] BepInEx 安装完成（$($asset.name)）。" -ForegroundColor Green
+        Disable-Console $game
         Write-Host "  提示：首次启动游戏会自动生成 interop/，之后才能编译 mod。" -ForegroundColor DarkGray
         return $true
     } catch {
@@ -245,6 +295,10 @@ if (-not $SkipBepInEx) {
     if (-not (Install-BepInEx $game)) { Write-Host "BepInEx 依赖安装失败，中止。可用 -SkipBepInEx 跳过。" -ForegroundColor Red; exit 1 }
 } else {
     Write-Host "[依赖] 已跳过 BepInEx 安装（-SkipBepInEx）。" -ForegroundColor DarkGray
+}
+$interop = Join-Path $game "BepInEx\interop"
+if (-not (Test-Path $interop)) {
+    Write-Host "  ⚠ BepInEx\interop 缺失：如首次装 BepInEx，需先启动一次游戏生成 interop/，否则下面 mod 编译会失败。" -ForegroundColor Yellow
 }
 
 $fail = @()

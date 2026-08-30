@@ -25,14 +25,19 @@ mod/
 
 ```powershell
 # 游戏目录来源：命令行参数 > 环境变量 DEMONIC_MAHJONG_DIR > .env 同名字段 > 旧硬编码兜底
-# 1) 修改源码后编译
+# 1) 一键安装/卸载（交互式选 mod + Steam 自动探测 + BepInEx 依赖自动补装）
+.\install_mods.bat
+#    非交互：.\install_mods.bat   （对 install_mods.ps1 透传参数）
+#    powershell -ExecutionPolicy Bypass -File install_mods.ps1 -Mods 1,2 -SkipBepInEx
+#    powershell -ExecutionPolicy Bypass -File install_mods.ps1 -u -RemoveBepInEx
+# 2) 手动编译/安装
 .\build.bat                 # 或 dotnet build -c Release（编译物在 bin\Release\）
 
-# 2) 安装（必须先关游戏，否则"另一个程序正在使用此文件"）
+# 3) 安装（必须先关游戏，否则"另一个程序正在使用此文件"）
 taskkill //F //IM "Demonic Mahjong.exe"   # exe 名带空格！勿用错名
 .\install.bat               # 拷贝到 游戏\BepInEx\plugins\
 
-# 3) 启动游戏并验证
+# 4) 启动游戏并验证
 start "" "%DEMONIC_MAHJONG_DIR%\Demonic Mahjong.exe"
 # 看日志（别直接 tail 整个文件）：
 grep -aE "ScorePreview|ting hook|uiFan|D: |Error" "%DEMONIC_MAHJONG_DIR%\BepInEx\LogOutput.log" | tail
@@ -43,6 +48,12 @@ grep -aE "ScorePreview|ting hook|uiFan|D: |Error" "%DEMONIC_MAHJONG_DIR%\BepInEx
   症状 = 日志行为与源码不符）。
 - 加载：`Loading [ScorePreview …]` + `ScoreHud active`。
 - 听牌：钩子 `D: calls=N` 递增；`ting hook -> none: 原因` = 未成功。HUD 两行各自独立出数。
+
+警惕一坑：BepInEx 6 只作为 **prerelease** 发布，`/releases/latest` 只会命中旧 5.x → 依赖下载必须用
+`releases` 列表 + 资产名匹配 `(?i)il2cpp`+`x64`+非 `x86/linux/macos/unix`；直连失败自动换镜像
+`https://gh.ddlc.top/<原GitHub地址>`（install_mods.ps1 内 Get-WithRetry/Save-WithRetry）。
+首次装 BepInEx 后 interop/ 未生成，mod 编译必失败 → 先启动一次游戏（或用同版本开发拷贝的
+`BepInEx\interop` + `unity-libs` + `config` 补齐），再跑脚本。
 
 ## 番数真相与 FanNum（最重要）
 
