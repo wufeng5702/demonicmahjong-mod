@@ -30,6 +30,7 @@ namespace ScorePreview
         private float _nextPoll;
         private float _nextPanelSearch;
         private string _liveBase = "";
+        private int _yOffset;
 
         private void Awake()
         {
@@ -43,7 +44,27 @@ namespace ScorePreview
             bg.Apply();
             _style.normal.background = bg;
 
-            Log?.LogInfo("ScoreHud active (mirror PlayerHuPanel + ting hook)");
+            _yOffset = LoadYOffset();
+            Log?.LogInfo("ScoreHud active (mirror PlayerHuPanel + ting hook), yoffset=" + _yOffset);
+        }
+
+        /// <summary>从 dll 同目录的 yoffset.txt 读 HUD 下移像素（可选；无文件=0）。用户改后重启游戏即生效。</summary>
+        private static int LoadYOffset()
+        {
+            try
+            {
+                var dir = System.IO.Path.GetDirectoryName(
+                    System.Reflection.Assembly.GetExecutingAssembly().Location);
+                var f = System.IO.Path.Combine(dir, "yoffset.txt");
+                if (System.IO.File.Exists(f))
+                {
+                    string s = System.IO.File.ReadAllText(f).Trim();
+                    if (int.TryParse(s, NumberStyles.Integer, CultureInfo.InvariantCulture, out int v) && v >= 0)
+                        return v;
+                }
+            }
+            catch (Exception) { }
+            return 0;
         }
 
         private void Update()
@@ -598,7 +619,7 @@ namespace ScorePreview
 
         private void OnGUI()
         {
-            GUI.Label(new Rect(12, 12, 620, 40), _text, _style);
+            GUI.Label(new Rect(12, 12 + _yOffset, 620, 40), _text, _style);
         }
     }
 }
