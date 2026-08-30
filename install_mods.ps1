@@ -1,0 +1,261 @@
+﻿<#
+ install_mods.ps1 — 一键安装/卸载本仓库的 mod
+
+ 用法：
+   powershell -ExecutionPolicy Bypass -File install_mods.ps1            # 交互式
+   powershell -ExecutionPolicy Bypass -File install_mods.ps1 -Mods 1,2  # 直接装 1+2
+   powershell -ExecutionPolicy Bypass -File install_mods.ps1 -u         # 卸载（询问哪些）
+   powershell -ExecutionPolicy Bypass -File install_mods.ps1 -u -RemoveBepInEx   # 卸载并删 BepInEx
+
+ 参数：
+   -Mods <string>    要安装的 mod 编号（逗号分隔，如 1,2），给则跳过交互菜单
+   -u / -Uninstall   卸载模式：移除已装 mod 的 dll/配置文件
+   -RemoveBepInEx    卸载时一并删除 BepInEx 框架与前置（winhttp/doorstop/dotnet）
+   -SkipBepInEx      安装时跳过 BepInEx 依赖安装（仅装 mod 本体）
+   -GameDir <string> 手动指定游戏目录（默认自动探测：Steam 注册表/libraryfolders → 仓库根 .env）
+
+ 交互规则：先问用户选哪些 mod；若一个都不选 → 直接退出，连依赖也不安装。
+#>
+[CmdletBinding()]
+param(
+    [string]$Mods = "",
+    [switch]$u,
+    [switch]$Uninstall,
+    [switch]$RemoveBepInEx,
+    [switch]$SkipBepInEx,
+    [string]$GameDir = ""
+)
+$ErrorActionPreference = "Stop"
+$scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+
+if ($u)   { $Uninstall = $true }
+if ($Uninstall) {
+    # 这里强制走卸载流程
+} elseif ($Mods -eq "" -and $GameDir -ne "") {
+    # 无提示模式下允许指定目录
+}
+
+# 仓库存档：id / 项目目录 / dll 名 / 说明
+$catalog = @(
+    [pscustomobject]@{ Id=1; Project="ScorePreview"; Dll="ScorePreview.dll";  Cfg="ScorePreview.yml"; Desc="分数预览（计分/和牌两行 HUD）" },
+    [pscustomobject]@{ Id=2; Project="AutoContinue"; Dll="AutoContinue.dll";  Cfg="AutoContinue.yml"; Desc="自动跳过公告【继续】与对局【点击继续】" }
+)
+
+Write-Host "== DemonicMahjong Mod 安装器 ==" -ForegroundColor Cyan
+
+function Test-IsGameDir([string]$d) {
+    if ($d -eq "") { return $false }
+    $exe = Join-Path $d "Demonic Mahjong.exe"
+    $ga  = Join-Path $d "GameAssembly.dll"
+    return (Test-Path $exe) -and (Test-Path $ga)
+}
+
+function Get-SteamLibraries {
+    $list = New-Object System.Collections.ArrayList
+    try {
+        $reg = Get-ItemProperty -Path "HKCU:\Software\Valve\Steam" -Name SteamPath -ErrorAction SilentlyContinue
+        if ($reg -and $reg.SteamPath) { [void]$list.Add($reg.SteamPath) }
+    } catch {}
+    foreach ($base in $list.ToArray()) {
+        $vdf = Join-Path $base "steamapps\libraryfolders.vdf"
+        if (Test-Path $vdf) {
+            $m = Select-String -Path $vdf -Pattern '"path"\s+"([^"]+)"' -AllMatches
+            foreach ($mm in $m) { foreach ($g in $mm.Matches) { [void]$list.Add($g.Groups[1].Value -replace '\\\\','\') } }
+        }
+    }
+    return $list | Select-Object -Unique
+}
+
+function Find-GameDir {
+    foreach ($lib in Get-SteamLibraries) {
+        $cand = Join-Path $lib "steamapps\common\DemonicMahjong"
+        if (Test-IsGameDir $cand) { return $cand }
+    }
+    # 仓库根 .env
+    $envf = Join-Path $scriptRoot ".env"
+    if (Test-Path $envf) {
+        foreach ($line in Get-Content $envf) {
+            if ($line -match '^\s*DEMONIC_MAHJONG_DIR\s*=\s*"?([^"\r\n]+)"?\s*$') {
+                if (Test-IsGameDir $matches[1]) { return $matches[1] }
+            }
+        }
+    }
+    return $null
+}
+
+function Resolve-GameDir {
+    if ($GameDir -ne "") {
+        if (-not (Test-IsGameDir $GameDir)) { throw "目录不是游戏目录: $GameDir" }
+        return $GameDir
+    }
+    $auto = Find-GameDir
+    if ($auto) {
+        Write-Host "自动识别游戏目录: $auto" -ForegroundColor Green
+        return $auto
+    }
+    $manual = Read-Host "未找到 Steam 安装，请输入游戏目录（或回车取消）"
+    if ([string]::IsNullOrWhiteSpace($manual)) { return $null }
+    if (-not (Test-IsGameDir $manual)) { throw "目录不是游戏目录: $manual" }
+    return $manual
+}
+
+function Ask-Mods {
+    Write-Host ""
+    Write-Host "选择要操作的 mod（可多选）:"
+    foreach ($m in $catalog) {
+        Write-Host ("  [{0}] {1}  ——  {2}" -f $m.Id, $m.Project, $m.Desc)
+    }
+    Write-Host "  [0] 取消"
+    $raw = Read-Host "输入编号（逗号/空格分隔，如 1,2）"
+    $sel = @()
+    foreach ($tok in ($raw -split "[,\s，]+")) {
+        $n = 0
+        if ([int]::TryParse($tok, [ref]$n)) {
+            if ($n -eq 0) { return @() }
+            foreach ($m in $catalog) { if ($m.Id -eq $n) { $sel += $m } }
+        }
+    }
+    return $sel
+}
+function Parse-Mods([string]$s) {
+    $sel = @()
+    foreach ($tok in ($s -split "[,\s，]+")) {
+        $n = 0
+        if ([int]::TryParse($tok, [ref]$n)) {
+            foreach ($m in $catalog) { if ($m.Id -eq $n) { $sel += $m } }
+        }
+    }
+    return $sel
+}
+
+function Install-BepInEx([string]$game) {
+    $core = Join-Path $game "BepInEx\core\BepInEx.Core.dll"
+    if (Test-Path $core) { Write-Host "[依赖] BepInEx 已存在，跳过安装。" -ForegroundColor DarkGray; return $true }
+    Write-Host "[依赖] 未找到 BepInEx，尝试从 GitHub 下载 IL2CPP 版..." -ForegroundColor Yellow
+    try {
+        $headers = @{ "User-Agent" = "demonic-mahjong-mod-installer" }
+        $rel = Invoke-RestMethod -Headers $headers -Uri "https://api.github.com/repos/BepInEx/BepInEx/releases/latest"
+        $asset = $rel.assets | Where-Object { $_.name -match '^BepInEx_il2cpp_x64_.*\.zip$' } | Select-Object -First 1
+        if (-not $asset) { throw "未找到 BepInEx IL2CPP x64 资产" }
+        $tmp     = Join-Path $env:TEMP "bepinex_download.zip"
+        $tmpDir  = Join-Path $env:TEMP ("bepinex_ex_" + [Guid]::NewGuid().ToString("N"))
+        Write-Host "  下载 $($asset.browser_download_url)" -ForegroundColor DarkGray
+        Invoke-WebRequest -Headers $headers -Uri $asset.browser_download_url -OutFile $tmp
+        New-Item -ItemType Directory -Path $tmpDir -Force | Out-Null
+        Expand-Archive -Path $tmp -DestinationPath $tmpDir -Force
+        # 复制 BepInEx 目录与前置
+        Copy-Item (Join-Path $tmpDir "BepInEx") "$game\BepInEx" -Recurse -Force
+        foreach ($f in @("winhttp.dll","doorstop_config.ini","dotnet")) {
+            $src = Join-Path $tmpDir $f
+            if (Test-Path $src) { Copy-Item $src "$game\$f" -Recurse -Force }
+        }
+        Remove-Item $tmp -Force -ErrorAction SilentlyContinue
+        Remove-Item $tmpDir -Recurse -Force -ErrorAction SilentlyContinue
+        if (-not (Test-Path $core)) { throw "BepInEx 复制后校验失败" }
+        Write-Host "[依赖] BepInEx 安装完成。" -ForegroundColor Green
+        Write-Host "  提示：首次启动游戏会自动生成 interop/，之后才能编译 mod。" -ForegroundColor DarkGray
+        return $true
+    } catch {
+        Write-Host "[依赖] 安装 BepInEx 失败：$($_.Exception.Message)" -ForegroundColor Red
+        return $false
+    }
+}
+
+function Publish-Mod($mod, [string]$game) {
+    $projDir = Join-Path $scriptRoot $mod.Project
+    $dll = Join-Path $projDir "bin\Release\$($mod.Dll)"
+    Write-Host ("[mod] 编译 {0} ..." -f $mod.Project) -ForegroundColor Yellow
+    Push-Location $projDir
+    try {
+        dotnet build -c Release -p:GameDir="$game" | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw "dotnet build 失败（检查 interop/ 是否已生成、.NET SDK 是否安装）" }
+    } finally { Pop-Location }
+    if (-not (Test-Path $dll)) { throw "未找到产物: $dll" }
+    Copy-Item $dll (Join-Path $game "BepInEx\plugins\$($mod.Dll)") -Force
+    # 配置文件：不存在才写默认
+    $cfgDst = Join-Path $game "BepInEx\plugins\$($mod.Cfg)"
+    if (-not (Test-Path $cfgDst)) {
+        $template = Default-Cfg $mod.Project
+        if ($template) { [System.IO.File]::WriteAllText($cfgDst, $template, (New-Object System.Text.UTF8Encoding $true)) }
+    }
+    Write-Host ("[mod] 安装完成: {0} -> plugins\{1}" -f $mod.Project, $mod.Dll) -ForegroundColor Green
+}
+
+function Default-Cfg([string]$proj) {
+    switch ($proj) {
+        "AutoContinue" {
+            return "# AutoContinue — 自动跳过「等玩家点一下」的环节（改后重启游戏生效）`r`n" +
+                   "`r`n" +
+                   "# 1. 启动后的公告界面：自动点【继续】进入大厅`r`n" +
+                   "announce_enabled: true`r`n" +
+                   "announce_delay: 2.0`r`n" +
+                   "`r`n" +
+                   "# 2. 与 Boss 对决加载完成后底部【点击继续】：自动点击进入对局`r`n" +
+                   "battle_enabled: true`r`n" +
+                   "battle_delay: 1.0`r`n"
+        }
+        "ScorePreview" { return "yoffset: 0.1`r`n" }
+        default { return $null }
+    }
+}
+
+function Uninstall-Mod($mod, [string]$game, [bool]$removeBepinex) {
+    $plugins = Join-Path $game "BepInEx\plugins"
+    foreach ($f in @($mod.Dll, $mod.Cfg)) {
+        $p = Join-Path $plugins $f
+        if (Test-Path $p) { Remove-Item $p -Force; Write-Host "[卸载] 已删除 $p" -ForegroundColor Yellow }
+    }
+}
+
+# ============ 主流程 ============
+if ($Uninstall) {
+    $sel = @()
+    if ($Mods -ne "") { $sel = Parse-Mods $Mods } else { $sel = Ask-Mods }
+    if ($sel.Count -eq 0) { Write-Host "未选择任何 mod，退出。" -ForegroundColor DarkGray; exit 0 }
+    $game = Resolve-GameDir
+    if (-not $game) { Write-Host "未确定游戏目录，退出。" -ForegroundColor Red; exit 1 }
+    foreach ($m in $sel) { Uninstall-Mod $m $game $RemoveBepInEx }
+    if ($RemoveBepInEx) {
+        $confirm = Read-Host "确认删除整个 BepInEx 框架与前置(winhttp/doorstop/dotnet)? [y/N]"
+        if ($confirm -match '^y') {
+            Remove-Item (Join-Path $game "BepInEx") -Recurse -Force -ErrorAction SilentlyContinue
+            foreach ($f in @("winhttp.dll","doorstop_config.ini","dotnet")) {
+                Remove-Item (Join-Path $game $f) -Recurse -Force -ErrorAction SilentlyContinue
+            }
+            Write-Host "[卸载] BepInEx 框架已删除。" -ForegroundColor Green
+        }
+    }
+    Write-Host "卸载完成。" -ForegroundColor Green
+    exit 0
+}
+
+# 安装
+$sel = @()
+if ($Mods -ne "") { $sel = Parse-Mods $Mods } else { $sel = Ask-Mods }
+if ($sel.Count -eq 0) {
+    Write-Host "未选择任何 mod，跳过依赖安装并退出。" -ForegroundColor DarkGray
+    exit 0
+}
+Write-Host ("已选择: " + (($sel.Project) -join ", ")) -ForegroundColor Cyan
+
+$game = Resolve-GameDir
+if (-not $game) { Write-Host "未确定游戏目录，退出。" -ForegroundColor Red; exit 1 }
+
+if (-not $SkipBepInEx) {
+    if (-not (Install-BepInEx $game)) { Write-Host "BepInEx 依赖安装失败，中止。可用 -SkipBepInEx 跳过。" -ForegroundColor Red; exit 1 }
+} else {
+    Write-Host "[依赖] 已跳过 BepInEx 安装（-SkipBepInEx）。" -ForegroundColor DarkGray
+}
+
+$fail = @()
+foreach ($m in $sel) {
+    try { Publish-Mod $m $game } catch { Write-Host "[mod] 失败: $($_.Exception.Message)" -ForegroundColor Red; $fail += $m.Project }
+}
+
+Write-Host ""
+Write-Host "== 完成 ==" -ForegroundColor Cyan
+if ($fail.Count -gt 0) {
+    Write-Host ("失败: " + ($fail -join ", ") + "（常见: 需先启动一次游戏生成 interop/）") -ForegroundColor Red
+} else {
+    Write-Host "全部 mod 安装成功，启动游戏验证。" -ForegroundColor Green
+}
