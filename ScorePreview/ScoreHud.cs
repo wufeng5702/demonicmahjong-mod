@@ -48,23 +48,31 @@ namespace ScorePreview
             Log?.LogInfo("ScoreHud active (mirror PlayerHuPanel + ting hook), yoffset=" + _yOffset);
         }
 
-        /// <summary>从 dll 同目录的 yoffset.txt 读 HUD 下移像素（可选；无文件=0）。用户改后重启游戏即生效。</summary>
+        /// <summary>读 HUD 下移值（屏幕高度比例）。yoffset.txt（dll 同目录，改后重启生效）：
+        ///   写「8」= 屏幕高度的 8%（换分辨率不变形）。无文件默认 8%。返回最终像素偏移。</summary>
         private static int LoadYOffset()
         {
+            string spec = "";
             try
             {
                 var dir = System.IO.Path.GetDirectoryName(
                     System.Reflection.Assembly.GetExecutingAssembly().Location);
                 var f = System.IO.Path.Combine(dir, "yoffset.txt");
                 if (System.IO.File.Exists(f))
-                {
-                    string s = System.IO.File.ReadAllText(f).Trim();
-                    if (int.TryParse(s, NumberStyles.Integer, CultureInfo.InvariantCulture, out int v) && v >= 0)
-                        return v;
-                }
+                    spec = System.IO.File.ReadAllText(f).Trim();
             }
             catch (Exception) { }
-            return 0;
+            if (spec.Length == 0)
+                spec = "8";
+            try
+            {
+                string n = spec.TrimEnd('%').Trim();
+                if (float.TryParse(n, NumberStyles.Float, CultureInfo.InvariantCulture, out float p)
+                    && p >= 0f)
+                    return (int)(Screen.height * p / 100f);
+            }
+            catch (Exception) { }
+            return (int)(Screen.height * 8 / 100f);
         }
 
         private void Update()
