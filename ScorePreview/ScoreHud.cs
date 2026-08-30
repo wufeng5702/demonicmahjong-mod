@@ -48,31 +48,40 @@ namespace ScorePreview
             Log?.LogInfo("ScoreHud active (mirror PlayerHuPanel + ting hook), yoffset=" + _yOffset);
         }
 
-        /// <summary>读 HUD 下移值（屏幕高度比例）。yoffset.txt（dll 同目录，改后重启生效）：
-        ///   写「8」= 屏幕高度的 8%（换分辨率不变形）。无文件默认 8%。返回最终像素偏移。</summary>
+        /// <summary>读 HUD 下移值：dll 同目录 ScorePreview.yml（改后重启生效），如
+        ///   yoffset: 0.1    # 屏幕高度的比例，1.0=100%
+        /// 无文件/无字段默认 0.1（10%）。返回最终像素偏移。</summary>
         private static int LoadYOffset()
         {
-            string spec = "";
+            float p = 0.10f;
             try
             {
                 var dir = System.IO.Path.GetDirectoryName(
                     System.Reflection.Assembly.GetExecutingAssembly().Location);
-                var f = System.IO.Path.Combine(dir, "yoffset.txt");
+                var f = System.IO.Path.Combine(dir, "ScorePreview.yml");
                 if (System.IO.File.Exists(f))
-                    spec = System.IO.File.ReadAllText(f).Trim();
+                {
+                    string[] lines = System.IO.File.ReadAllLines(f);
+                    for (int i = 0; i < lines.Length; i++)
+                    {
+                        string t = lines[i].Trim();
+                        if (t.Length == 0 || t.StartsWith("#")) continue;
+                        int ci = t.IndexOf(':');
+                        if (ci < 0) continue;
+                        string k = t.Substring(0, ci).Trim();
+                        string v = t.Substring(ci + 1).Trim();
+                        if (string.Equals(k, "yoffset", StringComparison.OrdinalIgnoreCase)
+                            && float.TryParse(v, NumberStyles.Float, CultureInfo.InvariantCulture, out float q))
+                        {
+                            p = q;
+                            break;
+                        }
+                    }
+                }
             }
             catch (Exception) { }
-            if (spec.Length == 0)
-                spec = "8";
-            try
-            {
-                string n = spec.TrimEnd('%').Trim();
-                if (float.TryParse(n, NumberStyles.Float, CultureInfo.InvariantCulture, out float p)
-                    && p >= 0f)
-                    return (int)(Screen.height * p / 100f);
-            }
-            catch (Exception) { }
-            return (int)(Screen.height * 8 / 100f);
+            if (p < 0f) p = 0f;
+            return (int)(Screen.height * p);
         }
 
         private void Update()
