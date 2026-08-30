@@ -29,7 +29,7 @@
 
 ## 安装现状（已完成）
 
-游戏实际安装目录 `E:\Program Files (x86)\Steam\steamapps\common\DemonicMahjong` 已装入 BepInEx 6：
+游戏实际安装目录（仓库根 `.env` 的 `DEMONIC_MAHJONG_DIR`）已装入 BepInEx 6：
 
 ```
 DemonicMahjong/
@@ -65,7 +65,7 @@ DemonicMahjong/
 
 ```
 mod/ScorePreview/
-  ScorePreview.csproj    GameDir 默认指向 Steam 实际安装目录，可 -p:GameDir=... 覆盖
+  ScorePreview.csproj    GameDir 读取环境变量 DEMONIC_MAHJONG_DIR（build.bat 从仓库根 .env 传入）
   Plugin.cs              入口：AddComponent<ScoreHud>()；Harmony 建树 PatchAll
   ScoreHud.cs            IMGUI HUD：读预测快照 → 左上角 "Est: 底分 x 番数 x 倍率 = 预计"
   Prediction.cs          听牌钩子 TingHookPatch + Comp.Try 计算（HashSet 提取 + GetTotalScore）

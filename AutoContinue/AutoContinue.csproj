@@ -1,9 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- 游戏根目录（exe 所在目录）。默认读 mod\<project>\..\.env 的 DEMONIC_MAHJONG_DIR。
-       可用 -p:GameDir=路径 覆盖（如开发拷贝） -->
+  <!-- 游戏根目录（exe 所在目录）。由构建脚本传入 -p:GameDir=...（来自仓库根 .env）；
+       直接 dotnet build 时读环境变量 DEMONIC_MAHJONG_DIR。真实路径只存在于 .env。 -->
   <PropertyGroup>
-    <GameDir Condition="'$(GameDir)' == ''">E:\Program Files (x86)\Steam\steamapps\common\DemonicMahjong</GameDir>
+    <GameDir Condition="'$(GameDir)' == '' and '$(DEMONIC_MAHJONG_DIR)' != ''">$(DEMONIC_MAHJONG_DIR)</GameDir>
   </PropertyGroup>
 
   <PropertyGroup>
