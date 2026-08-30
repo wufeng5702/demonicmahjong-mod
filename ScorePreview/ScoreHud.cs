@@ -108,7 +108,7 @@ namespace ScorePreview
             catch (Exception) { return false; }
         }
 
-        /// <summary>从可能是富文本的文本里解析一个番数：挑「数字后面紧跟番」的第一处。</summary>
+        /// <summary>从可能是富文本的文本里解析一个番数：挑「数字后面紧跟(可隔空白)番」的第一处。</summary>
         private static bool TryParseFan(string s, out int v)
         {
             v = 0;
@@ -118,6 +118,7 @@ namespace ScorePreview
                 if (s[i] < '0' || s[i] > '9') continue;
                 int j = i, n = 0;
                 while (j < s.Length && s[j] >= '0' && s[j] <= '9') { n = n * 10 + (s[j] - '0'); j++; }
+                while (j < s.Length && s[j] == ' ') j++;
                 if (j < s.Length && (s[j] == '番' || s[j] == 'ン'))
                 {
                     v = n;
@@ -138,10 +139,19 @@ namespace ScorePreview
                 DumpSettlement();
             }
 
-            // 计分行：结算面板打开且数字稳定后镜像（权威）。
+            // 计分行：结算面板打开且数字稳定后镜像（权威）；否则计分按钮可用时预览
+            // （番数=计分按钮上的 Total，与和牌 FanNum 不是同一处）。
             string settleLine = "计分: --";
             if (_settleVisible && LastSettleFactors != null)
                 settleLine = "计分: " + LastSettleFactors;
+            else if (TryJiFenFan(out int jfFan) && jfFan > 0)
+            {
+                decimal jfMul = TingSnap.Has && TingSnap.Cur.Mul > 0 ? TingSnap.Cur.Mul : LiveMul();
+                if (jfMul > 0)
+                    settleLine = "计分: " + MakeEst(LiveBase(), (decimal)(long)jfFan, jfMul);
+                else
+                    settleLine = "计分: " + jfFan + " 番?" + (LiveBase().Length > 0 ? " x " + LiveBase() : "");
+            }
 
             // 和牌行：听牌钩子预测（底分实时 x 最小番 x 倍率）。
             // 番数优先用游戏听牌面板直接显示的 FanNum（多等待取最小），这是权威值，不推算。
@@ -384,6 +394,74 @@ namespace ScorePreview
             foreach (char c in s)
                 if (c < '0' || c > '9') return false;
             return true;
+        }
+
+        /// <summary>画面上是否存在带「JiFen」祖先的节点（计分按钮可用）。</summary>
+        private static bool HasAncestor(TMPro.TMP_Text t, string name)
+        {
+            var p = t.transform.parent;
+            while (p != null)
+            {
+                if (p.name == name) return true;
+                p = p.parent;
+            }
+            return false;
+        }
+
+        private static string _lastJfRaw = "";
+        /// <summary>读计分按钮上的番数：GO 名 Total 且祖先含 JiFen，文本如「6 番」。
+        /// 游戏在计分按钮上直接预览计分要用的番数（与和牌预览 FanNum 不是同一处）。</summary>
+        private static bool TryJiFenFan(out int fan)
+        {
+            fan = 0;
+            try
+            {
+                var texts = UnityEngine.Object.FindObjectsOfType<TMPro.TMP_Text>();
+                bool any = false;
+                var raw = new System.Text.StringBuilder();
+                for (int i = 0; i < texts.Length; i++)
+                {
+                    var t = texts[i];
+                    if (t == null || t.m_text == null) continue;
+                    if (t.gameObject.name != "Total") continue;
+                    if (!HasAncestor(t, "JiFen")) continue;
+                    if (!TryParseFan(t.m_text, out int v)) continue;
+                    any = true;
+                    if (fan == 0 || v < fan) fan = v;
+                    if (raw.Length > 0) raw.Append(",");
+                    raw.Append(t.m_text.Trim());
+                }
+                string rr = raw.ToString();
+                if (any && rr != _lastJfRaw)
+                {
+                    _lastJfRaw = rr;
+                    Log?.LogInfo("Diag: jfFan=" + fan + " from [" + rr + "]");
+                }
+                return any;
+            }
+            catch (Exception) { return false; }
+        }
+
+        /// <summary>玩家实时倍率：RoundStatistics/PlayerStates/Independent/IndependentText（如「2.3」）。</summary>
+        private static decimal LiveMul()
+        {
+            try
+            {
+                var texts = UnityEngine.Object.FindObjectsOfType<TMPro.TMP_Text>();
+                for (int i = 0; i < texts.Length; i++)
+                {
+                    var t = texts[i];
+                    if (t == null || t.m_text == null) continue;
+                    if (t.gameObject.name != "IndependentText") continue;
+                    if (!HasAncestor(t, "PlayerStates")) continue;
+                    string s = t.m_text.Trim();
+                    if (decimal.TryParse(s, System.Globalization.NumberStyles.Float,
+                            System.Globalization.CultureInfo.InvariantCulture, out decimal m) && m > 0)
+                        return m;
+                }
+            }
+            catch (Exception) { }
+            return 0;
         }
 
         private float _nextScan;
