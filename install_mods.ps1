@@ -60,7 +60,7 @@ function Get-SteamLibraries {
         $vdf = Join-Path $base "steamapps\libraryfolders.vdf"
         if (Test-Path $vdf) {
             $m = Select-String -Path $vdf -Pattern '"path"\s+"([^"]+)"' -AllMatches
-            foreach ($mm in $m) { foreach ($g in $mm.Matches) { [void]$list.Add($g.Groups[1].Value -replace '\\\\','\') } }
+            foreach ($mm in $m) { foreach ($g in $mm.Matches) { [void]$list.Add(($g.Groups[1].Value -replace '\\\\','\')) } }
         }
     }
     return $list | Select-Object -Unique
