@@ -19,7 +19,7 @@ namespace ScorePreview
         internal static BepInEx.Logging.ManualLogSource Log;
 
         private GUIStyle _style;
-        private string _text = "Est: --";
+        private string _text = "计分: --\n和牌: --";
         private string _lastLogged;
         private string _lastDiagLogged;
         private string _lastError;
@@ -175,7 +175,7 @@ namespace ScorePreview
             }
 
             if (settleLine.EndsWith("--") && LastSettleFactors == null && huLine.EndsWith("--"))
-                _text = "Est: --";
+                _text = "计分: --\n和牌: --";
             else
                 _text = settleLine + "\n" + huLine;
 
@@ -314,18 +314,19 @@ namespace ScorePreview
             catch (Exception) { return null; }
         }
 
-        /// <summary>底分 × 番数 × 倍率 = 预计分。底分读不到时显示 base?。</summary>
+        /// <summary>底分 × 番数 × 倍率 = 预计分。底分读不到时显示 base?。
+        /// 两个标签（计分:/和牌:）由调用方拼，这里不再带 Est: 前缀。</summary>
         private static string MakeEst(string baseS, decimal fan, decimal mul)
         {
-            if (fan <= 0) return "Est: --";
+            if (fan <= 0) return "--";
             decimal b;
             string bs = baseS == null ? "" : baseS.Trim();
             if (decimal.TryParse(bs, NumberStyles.Number, CultureInfo.InvariantCulture, out b))
             {
                 string total = Fmt(b * fan * mul);
-                return "Est: " + bs + " x " + Fmt(fan) + " x " + Fmt(mul) + " = " + total;
+                return bs + " x " + Fmt(fan) + " x " + Fmt(mul) + " = " + total;
             }
-            return "Est: base? x " + Fmt(fan) + " x " + Fmt(mul);
+            return "base? x " + Fmt(fan) + " x " + Fmt(mul);
         }
 
         /// <summary>原生读 List&lt;Il2CppSystem.Decimal&gt; 的内联元素（List 布局：+0x10=_items 引用,+0x18=_size；数组元素基址=+0x18,步长16）。</summary>
