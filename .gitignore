@@ -1,6 +1,4 @@
 .env
-ScorePreview/bin/
-ScorePreview/obj/
-tools/dumptypes/bin/
-tools/dumptypes/obj/
+*/bin/
+*/obj/
 tools/dumptypes/libs/
