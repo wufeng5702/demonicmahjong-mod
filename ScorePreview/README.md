@@ -42,6 +42,24 @@ DemonicMahjong/
 仓库内的 `DemonicMahjong/` 是同一版本的开发拷贝（GameAssembly.dll 与 global-metadata.dat 哈希一致），
 仅供开发/测试 interop 用，不在其中玩游戏。
 
+### 哪些不是本 Mod、可删/不必保留
+
+目录里的大部分东西是 **BepInEx 框架本身**（前置必需），不是我们的插件加的：
+
+- `winhttp.dll` / `doorstop_config.ini` / `dotnet\` —— BepInEx 6 IL2CPP 的加载器与 .NET 运行时，必需。
+- `BepInEx\core\`、`BepInEx\unity-libs\` —— BepInEx 运行库，必需。
+- `BepInEx\interop\`（约 93MB）—— 首次启动自动生成的互操作程序集，**可删**，下次启动会重新生成。
+- `BepInEx\cache\chainloader_typeloader.dat`、`BepInEx\LogOutput.log`、`ErrorLog.log` —— 缓存/日志，可删。
+
+**本 Mod 的全部内容只有两个文件**（各 ~30KB）：
+`BepInEx\plugins\ScorePreview.dll` 与（可选的）`BepInEx\plugins\ScorePreview.yml`。
+
+### 最小化安装（新机器 / 换电脑）
+
+1. 装入 BepInEx 6（IL2CPP 版），首次启动游戏让它生成 `interop\`。
+2. 把 `ScorePreview.dll`（和需要的 `ScorePreview.yml`）拷进 `BepInEx\plugins\`。
+3. 不需要带 `interop\` / `cache` / 日志；`install.bat` 也只拷贝插件 dll 一个文件。
+
 ## 目录结构
 
 ```
