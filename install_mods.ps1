@@ -250,7 +250,12 @@ function Default-Cfg([string]$proj) {
                    "battle_enabled: true`r`n" +
                    "battle_delay: 1.0`r`n"
         }
-        "ScorePreview" { return "yoffset: 0.1`r`n" }
+        "ScorePreview" { 
+            return "# ScorePreview — 分数预览`r`n" +
+                   "`r`n" +
+                   "# HUD 距顶部的下移量 = 屏幕高度 × 该比例（1.0=满屏高），换分辨率不变形`r`n" +
+                   "yoffset: 0.1`r`n" 
+        }
         default { return $null }
     }
 }
