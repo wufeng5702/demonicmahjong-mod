@@ -31,17 +31,18 @@ $ProgressPreference = 'SilentlyContinue'
 
 $scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 
-if ($u)   { $Uninstall = $true }
+if ($u) { $Uninstall = $true }
 if ($Uninstall) {
     # 这里强制走卸载流程
-} elseif ($Mods -eq "" -and $GameDir -ne "") {
+}
+elseif ($Mods -eq "" -and $GameDir -ne "") {
     # 无提示模式下允许指定目录
 }
 
 # 仓库存档：id / 项目目录 / dll 名 / 说明
 $catalog = @(
-    [pscustomobject]@{ Id=1; Project="ScorePreview"; Dll="ScorePreview.dll";  Cfg="ScorePreview.yml"; Desc="分数预览（计分/和牌两行 HUD）" },
-    [pscustomobject]@{ Id=2; Project="AutoContinue"; Dll="AutoContinue.dll";  Cfg="AutoContinue.yml"; Desc="自动跳过公告【继续】与对局【点击继续】" }
+    [pscustomobject]@{ Id = 1; Project = "ScorePreview"; Dll = "ScorePreview.dll"; Cfg = "ScorePreview.yml"; Desc = "分数预览（计分/和牌两行 HUD）" },
+    [pscustomobject]@{ Id = 2; Project = "AutoContinue"; Dll = "AutoContinue.dll"; Cfg = "AutoContinue.yml"; Desc = "自动跳过公告【继续】与对局【点击继续】" }
 )
 
 Write-Host "== DemonicMahjong Mod 安装器 ==" -ForegroundColor Cyan
@@ -49,7 +50,7 @@ Write-Host "== DemonicMahjong Mod 安装器 ==" -ForegroundColor Cyan
 function Test-IsGameDir([string]$d) {
     if ($d -eq "") { return $false }
     $exe = Join-Path $d "Demonic Mahjong.exe"
-    $ga  = Join-Path $d "GameAssembly.dll"
+    $ga = Join-Path $d "GameAssembly.dll"
     return (Test-Path $exe) -and (Test-Path $ga)
 }
 
@@ -58,12 +59,13 @@ function Get-SteamLibraries {
     try {
         $reg = Get-ItemProperty -Path "HKCU:\Software\Valve\Steam" -Name SteamPath -ErrorAction SilentlyContinue
         if ($reg -and $reg.SteamPath) { [void]$list.Add($reg.SteamPath) }
-    } catch {}
+    }
+    catch {}
     foreach ($base in $list.ToArray()) {
         $vdf = Join-Path $base "steamapps\libraryfolders.vdf"
         if (Test-Path $vdf) {
             $m = Select-String -Path $vdf -Pattern '"path"\s+"([^"]+)"' -AllMatches
-            foreach ($mm in $m) { foreach ($g in $mm.Matches) { [void]$list.Add(($g.Groups[1].Value -replace '\\\\','\')) } }
+            foreach ($mm in $m) { foreach ($g in $mm.Matches) { [void]$list.Add(($g.Groups[1].Value -replace '\\\\', '\')) } }
         }
     }
     return $list | Select-Object -Unique
@@ -134,7 +136,8 @@ function Parse-Mods([string]$s) {
 function Get-WithRetry([string]$url) {
     try {
         return Invoke-RestMethod -Headers $script:headers -Uri $url -TimeoutSec 60
-    } catch {
+    }
+    catch {
         Write-Host "  GitHub 直连失败（$($_.Exception.Message)），改走镜像 https://gh.ddlc.top/ ..." -ForegroundColor DarkGray
         return Invoke-RestMethod -Headers $script:headers -Uri ("https://gh.ddlc.top/" + $url) -TimeoutSec 120
     }
@@ -143,25 +146,74 @@ function Get-WithRetry([string]$url) {
 function Save-WithRetry([string]$url, [string]$out) {
     try {
         Invoke-WebRequest -Headers $script:headers -Uri $url -OutFile $out -TimeoutSec 300
-    } catch {
+    }
+    catch {
         Write-Host "  下载失败（$($_.Exception.Message)），改走镜像 https://gh.ddlc.top/ ..." -ForegroundColor DarkGray
         Invoke-WebRequest -Headers $script:headers -Uri ("https://gh.ddlc.top/" + $url) -OutFile $out -TimeoutSec 600
     }
 }
 
+# 隐藏 BepInEx 控制台
 function Disable-Console([string]$game) {
-    # 与既有环境一致：隐藏 BepInEx 日志控制台黑窗口（仅影响新装的 BepInEx）
+    Write-Host "  隐藏 BepInEx 控制台" -ForegroundColor Yellow
     $cfg = Join-Path $game "BepInEx\config\BepInEx.cfg"
+    if (-not (Test-Path $cfg)) {
+        Write-Host "  ⚠ 未找到 BepInEx.cfg，无法隐藏控制台" -ForegroundColor Yellow
+        return
+    }
+
     try {
-        if (Test-Path $cfg) {
-            $txt = Get-Content -Raw -Encoding UTF8 $cfg
-            $new = $txt -replace '(?m)^(\s*Enabled\s*=\s*)true(\s*)$', '${1}false${2}'
-            if ($new -ne $txt) {
-                [System.IO.File]::WriteAllText($cfg, $new, (New-Object System.Text.UTF8Encoding $true))
-                Write-Host "  已隐藏 BepInEx 控制台黑窗口（BepInEx.cfg）" -ForegroundColor DarkGray
+        # 移除只读属性（如果有）
+        if ((Get-Item $cfg).IsReadOnly) {
+            Set-ItemProperty -Path $cfg -Name IsReadOnly -Value $false
+        }
+
+        $lines = Get-Content -Path $cfg -Encoding UTF8
+        $inConsoleSection = $false
+        $modified = $false
+        $newLines = @()
+
+        foreach ($line in $lines) {
+            # 检查是否进入 [Logging.Console] 节
+            if ($line -match '^\s*\[Logging\.Console\]\s*$') {
+                $inConsoleSection = $true
+            }
+            elseif ($line -match '^\s*\[.*\]\s*$') {
+                # 遇到其他节，退出当前节
+                $inConsoleSection = $false
+            }
+
+            if ($inConsoleSection -and $line -match '^\s*Enabled\s*=\s*true\s*$') {
+                # 只修改本节的 Enabled
+                $newLines += $line -replace 'true', 'false'
+                $modified = $true
+            }
+            else {
+                $newLines += $line
             }
         }
-    } catch {}
+
+        if ($modified) {
+            [System.IO.File]::WriteAllLines($cfg, $newLines, (New-Object System.Text.UTF8Encoding $true))
+            Write-Host "  ✅ 已修改 BepInEx.cfg，控制台将在下次启动时隐藏。" -ForegroundColor Green
+            return
+        }
+
+        # 如果未修改，检查是否已经为 false 或不存在该行
+        $currentContent = Get-Content -Path $cfg -Raw -Encoding UTF8
+        if ($currentContent -match '\[Logging\.Console\][^\[]*Enabled\s*=\s*false') {
+            Write-Host "  ℹ️ BepInEx.cfg 中控制台设置已为 false，无需修改。" -ForegroundColor DarkGray
+        }
+        else {
+            # 没有找到 [Logging.Console] 节或没有 Enabled，则添加
+            $newContent = $currentContent.TrimEnd() + "`r`n`r`n[Logging.Console]`r`nEnabled = false`r`n"
+            [System.IO.File]::WriteAllText($cfg, $newContent, (New-Object System.Text.UTF8Encoding $true))
+            Write-Host "  ✅ 已添加 [Logging.Console] 节并设为 false。" -ForegroundColor Green
+        }
+    }
+    catch {
+        Write-Host "  ❌ 修改 BepInEx.cfg 失败：$($_.Exception.Message)" -ForegroundColor Red
+    }
 }
 
 function Install-BepInEx([string]$game) {
@@ -177,8 +229,8 @@ function Install-BepInEx([string]$game) {
     $downloadUrl = "https://builds.bepinex.dev/projects/bepinex_be/785/BepInEx-Unity.IL2CPP-win-x64-6.0.0-be.785%2B6abdba4.zip"
     $zipName = "BepInEx-Unity.IL2CPP-win-x64-6.0.0-be.785+6abdba4.zip"
 
-    $tmp     = Join-Path $env:TEMP "bepinex_download.zip"
-    $tmpDir  = Join-Path $env:TEMP ("bepinex_ex_" + [Guid]::NewGuid().ToString("N"))
+    $tmp = Join-Path $env:TEMP "bepinex_download.zip"
+    $tmpDir = Join-Path $env:TEMP ("bepinex_ex_" + [Guid]::NewGuid().ToString("N"))
 
     Write-Host "  下载 $zipName" -ForegroundColor DarkGray
     try {
@@ -189,7 +241,7 @@ function Install-BepInEx([string]$game) {
         Expand-Archive -Path $tmp -DestinationPath $tmpDir -Force
 
         Copy-Item (Join-Path $tmpDir "BepInEx") "$game\BepInEx" -Recurse -Force
-        foreach ($f in @("winhttp.dll","doorstop_config.ini","dotnet")) {
+        foreach ($f in @("winhttp.dll", "doorstop_config.ini", "dotnet")) {
             $src = Join-Path $tmpDir $f
             if (Test-Path $src) {
                 Copy-Item $src "$game\$f" -Recurse -Force
@@ -208,10 +260,10 @@ function Install-BepInEx([string]$game) {
         }
 
         Write-Host "[依赖] BepInEx 安装完成（$zipName）。" -ForegroundColor Green
-        Disable-Console $game
         Write-Host "  提示：首次启动游戏会自动生成 interop/，之后才能编译 mod。" -ForegroundColor DarkGray
         return $true
-    } catch {
+    }
+    catch {
         Write-Host "[依赖] 安装 BepInEx 失败：$($_.Exception.Message)" -ForegroundColor Red
         return $false
     }
@@ -225,7 +277,8 @@ function Publish-Mod($mod, [string]$game) {
     try {
         dotnet build -c Release -p:GameDir="$game" | Out-Null
         if ($LASTEXITCODE -ne 0) { throw "dotnet build 失败（检查 interop/ 是否已生成、.NET SDK 是否安装）" }
-    } finally { Pop-Location }
+    }
+    finally { Pop-Location }
     if (-not (Test-Path $dll)) { throw "未找到产物: $dll" }
     Copy-Item $dll (Join-Path $game "BepInEx\plugins\$($mod.Dll)") -Force
     # 配置文件：不存在才写默认
@@ -241,22 +294,88 @@ function Default-Cfg([string]$proj) {
     switch ($proj) {
         "AutoContinue" {
             return "# AutoContinue — 自动跳过「等玩家点一下」的环节（改后重启游戏生效）`r`n" +
-                   "`r`n" +
-                   "# 1. 启动后的公告界面：自动点【继续】进入大厅`r`n" +
-                   "announce_enabled: true`r`n" +
-                   "announce_delay: 2.0`r`n" +
-                   "`r`n" +
-                   "# 2. 与 Boss 对决加载完成后底部【点击继续】：自动点击进入对局`r`n" +
-                   "battle_enabled: true`r`n" +
-                   "battle_delay: 1.0`r`n"
+            "`r`n" +
+            "# 1. 启动后的公告界面：自动点【继续】进入大厅`r`n" +
+            "announce_enabled: true`r`n" +
+            "announce_delay: 2.0`r`n" +
+            "`r`n" +
+            "# 2. 与 Boss 对决加载完成后底部【点击继续】：自动点击进入对局`r`n" +
+            "battle_enabled: true`r`n" +
+            "battle_delay: 1.0`r`n"
         }
         "ScorePreview" { 
             return "# ScorePreview — 分数预览`r`n" +
-                   "`r`n" +
-                   "# HUD 距顶部的下移量 = 屏幕高度 × 该比例（1.0=满屏高），换分辨率不变形`r`n" +
-                   "yoffset: 0.1`r`n" 
+            "`r`n" +
+            "# HUD 距顶部的下移量 = 屏幕高度 × 该比例（1.0=满屏高），换分辨率不变形`r`n" +
+            "yoffset: 0.1`r`n" 
         }
         default { return $null }
+    }
+}
+
+function Invoke-AutoGenerateInterop([string]$game) {
+    $interopDir = Join-Path $game "BepInEx\interop"
+    if (Test-Path $interopDir) {
+        Write-Host "[interop] 已存在，跳过生成。" -ForegroundColor DarkGray
+        return $true
+    }
+
+    Write-Host "[interop] 未检测到 interop，将自动启动游戏生成..." -ForegroundColor Yellow
+    $exe = Join-Path $game "Demonic Mahjong.exe"
+    if (-not (Test-Path $exe)) {
+        Write-Host "[interop] 错误：找不到游戏可执行文件 $exe" -ForegroundColor Red
+        return $false
+    }
+
+    $log = Join-Path $game "BepInEx\LogOutput.log"
+    # 备份旧日志（如果存在）
+    if (Test-Path $log) { Remove-Item $log -Force }
+
+    Write-Host "  启动游戏（窗口将最小化，完成后自动关闭）..." -ForegroundColor DarkGray
+    $proc = Start-Process -FilePath $exe -PassThru -WindowStyle Minimized
+
+    $timeout = 120  # 秒，可根据网络速度调整
+    $start = Get-Date
+    $success = $false
+
+    while ((Get-Date) -lt $start.AddSeconds($timeout)) {
+        Start-Sleep -Milliseconds 500
+        if (Test-Path $log) {
+            # 读取末尾 50 行，避免大文件
+            $tail = Get-Content -Path $log -Tail 50 -ErrorAction SilentlyContinue
+            # 检测成功标志：Chainloader initialized 表示 interop 已生成且加载器完成
+            if ($tail -match "Chainloader initialized") {
+                $success = $true
+                break
+            }
+            # 检测失败标志（可选）
+            if ($tail -match "Failed to generate Il2Cpp interop assemblies") {
+                $success = $false
+                break
+            }
+        }
+    }
+
+    # 强制结束游戏进程（无论是否成功）
+    Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+
+    if ($success) {
+        Write-Host "[interop] 生成成功！" -ForegroundColor Green
+        return $true
+    }
+    else {
+        Write-Host "[interop] 自动生成失败或超时。可能原因：网络慢、游戏启动需 Steam、反作弊拦截等。" -ForegroundColor Yellow
+        Write-Host "  请手动启动游戏一次（等待进入主菜单后退出），然后按回车继续..." -ForegroundColor Yellow
+        Read-Host
+        # 再次检查 interop 是否生成
+        if (Test-Path $interopDir) {
+            Write-Host "[interop] 检测到手动生成成功。" -ForegroundColor Green
+            return $true
+        }
+        else {
+            Write-Host "[interop] 仍未生成，编译 mod 可能会失败。" -ForegroundColor Red
+            return $false
+        }
     }
 }
 
@@ -280,7 +399,7 @@ if ($Uninstall) {
         $confirm = Read-Host "确认删除整个 BepInEx 框架与前置(winhttp/doorstop/dotnet)? [y/N]"
         if ($confirm -match '^y') {
             Remove-Item (Join-Path $game "BepInEx") -Recurse -Force -ErrorAction SilentlyContinue
-            foreach ($f in @("winhttp.dll","doorstop_config.ini","dotnet")) {
+            foreach ($f in @("winhttp.dll", "doorstop_config.ini", "dotnet")) {
                 Remove-Item (Join-Path $game $f) -Recurse -Force -ErrorAction SilentlyContinue
             }
             Write-Host "[卸载] BepInEx 框架已删除。" -ForegroundColor Green
@@ -303,11 +422,22 @@ $game = Resolve-GameDir
 if (-not $game) { Write-Host "未确定游戏目录，退出。" -ForegroundColor Red; exit 1 }
 
 if (-not $SkipBepInEx) {
-    if (-not (Install-BepInEx $game)) { Write-Host "BepInEx 依赖安装失败，中止。可用 -SkipBepInEx 跳过。" -ForegroundColor Red; exit 1 }
-} else {
+    if (-not (Install-BepInEx $game)) {
+        Write-Host "BepInEx 依赖安装失败，中止。可用 -SkipBepInEx 跳过。" -ForegroundColor Red
+        exit 1
+    }
+}
+else {
     Write-Host "[依赖] 已跳过 BepInEx 安装（-SkipBepInEx）。" -ForegroundColor DarkGray
 }
+
+# 隐藏 BepInEx 控制台（无论是否新装）
 Disable-Console $game
+
+# 自动生成 interop（如果缺失）
+Invoke-AutoGenerateInterop $game
+
+# 继续编译 mod
 $interop = Join-Path $game "BepInEx\interop"
 if (-not (Test-Path $interop)) {
     Write-Host "  ⚠ BepInEx\interop 缺失：如首次装 BepInEx，需先启动一次游戏生成 interop/，否则下面 mod 编译会失败。" -ForegroundColor Yellow
@@ -316,12 +446,4 @@ if (-not (Test-Path $interop)) {
 $fail = @()
 foreach ($m in $sel) {
     try { Publish-Mod $m $game } catch { Write-Host "[mod] 失败: $($_.Exception.Message)" -ForegroundColor Red; $fail += $m.Project }
-}
-
-Write-Host ""
-Write-Host "== 完成 ==" -ForegroundColor Cyan
-if ($fail.Count -gt 0) {
-    Write-Host ("失败: " + ($fail -join ", ") + "（常见: 需先启动一次游戏生成 interop/）") -ForegroundColor Red
-} else {
-    Write-Host "全部 mod 安装成功，启动游戏验证。" -ForegroundColor Green
 }
