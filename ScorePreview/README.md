@@ -1,14 +1,14 @@
 # ScorePreview — 我在地府打麻将 分数预览 Mod
 
-对局中在屏幕左上角用两行 IMGUI 悬浮显示**预计得分**：
+对局中在屏幕左上角用四行 IMGUI 悬浮显示**预计得分**：
 
 ```
 计分: 底分 x 番数 x 倍率 = 预计分     （计分按钮可用时显示其预览；计分面板打开后镜像真实结算）
-和牌: 底分 x 番数 x 倍率 = 预计分     （听牌时显示，番数对多等待取最小）
+和牌1/2/3: 底分 x 番数 x 倍率 = 预计分 （听牌时显示，按和牌得分从小到大取前三）
 ```
 
-- **番数是权威的、不推算**：直接读游戏自身显示的数字——
-  - 和牌番数 = 听牌面板每个候选的 `FanNum`（`<color=#75D962>16番`，多等待取最小）；
+- **番数是权威的、不推算**：计分番数直接读游戏 UI，和牌番数优先使用听牌钩子复用
+  游戏结算计算出的结果，并以听牌面板 `FanNum` 作为兜底（`<color=#75D962>16番`）；
   - 计分番数 = **计分按钮**上的合计（`JiFen/FenXing/ExpandedButton/Total`，如 `6 番`，
     与和牌预览不是同一处）。
 - 底分 = 实时 `BaseScoreText`；倍率 = 听牌钩子算得的精确值（与结算一致），缺省时读玩家
@@ -17,7 +17,8 @@
 
 ## 现状（2026-08-30）
 
-- ✅ **和牌行已正常**：听牌时读 FanNum 面板（权威番数）→ `和牌: 145 x 16 x 2.25 = 5220`。
+- ✅ **和牌行已正常**：听牌时读取游戏 FanNum，并用包含遗物/灵俑 buff 的结算预测按得分取前三
+  → `和牌1: 145 x 16 x 2.25 = 5220`。
 - ✅ **计分行已正常**：计分按钮一出现即预览（按钮上的番数）→ `计分: 145 x 30 x 2.25 = 9787.5`；
   点开计分面板后镜像真实结算（`50 x 147 x 2.25 = 49,612` 类样本已实测）。
 - ✅ 听牌钩子 `PlayerPipeline.OnProcessTingResult(Auto)`（空字典=未听）仍用于：倍率精确值、
@@ -70,7 +71,7 @@ DemonicMahjong/
 mod/ScorePreview/
   ScorePreview.csproj    GameDir 读取环境变量 DEMONIC_MAHJONG_DIR（build.bat 从仓库根 .env 传入）
   Plugin.cs              入口：AddComponent<ScoreHud>()；Harmony 建树 PatchAll
-  ScoreHud.cs            IMGUI 两行 HUD：读游戏 UI（FanNum / 计分按钮 Total / BaseScore /
+  ScoreHud.cs            IMGUI 四行 HUD：读游戏 UI（FanNum / 计分按钮 Total / BaseScore /
                          Independent）+ 结算镜像；yoffset 配置
   Prediction.cs          听牌钩子 TingHookPatch（提供精确倍率 + 兜底小番求和）
   build.bat              编译（可选参数：游戏目录；从 .env 读 DEMONIC_MAHJONG_DIR）
@@ -95,7 +96,7 @@ install.bat      → 覆盖安装到游戏 BepInEx\plugins\
 - 启动后看 `BepInEx\LogOutput.log`：应有 `Loading [ScorePreview 0.1.0]`、`ScoreHud active ... yoffset=N`。
 - 听牌出现时：`Diag: uiFanMin=N from [16,15,16]`（和牌番数取自听牌面板）。
 - 计分按钮出现时：`Diag: jfFan=N from [6 番]`（计分番数取自计分按钮）。
-- HUD 每轮打印：`hud -> 计分: ... | 和牌: ...`。
+- HUD 每轮打印：`hud -> 计分: ... | 和牌1: ... | 和牌2: ... | 和牌3: ...`。
 - 结算镜像：`[settle] ... mul0/mul1/mul2/total` 与游戏面板一致。
 
 ## 技术说明 / 坑（重要，改代码必读）
@@ -118,7 +119,7 @@ install.bat      → 覆盖安装到游戏 BepInEx\plugins\
 - `Il2CppSystem.Decimal` 用 `lo/mid/hi/flags` 位布局重建 `System.Decimal`。
 - `PlayerRoundStatistics` 继承 `SaintsMonoBehaviour` → 引 `SaintsField.Runtime.dll`；
   读 `TMP_Text` 引 `Unity.TextMeshPro.dll` + `UnityEngine.UI.dll`。
-- IMGUI 默认字体仅 ASCII，中文会渲染成方块 → HUD 只显示 `计分:`/`和牌:` 两个短标签
+- IMGUI 默认字体仅 ASCII，中文会渲染成方块 → HUD 只显示 `计分:`/`和牌1:` 等短标签
   （数值均为 ASCII），其余说明文字放中文没问题但只在日志里。
 
 ### 历史路径（不再走，勿回退）

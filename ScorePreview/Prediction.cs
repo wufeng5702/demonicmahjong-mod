@@ -18,6 +18,7 @@ namespace ScorePreview
     {
         public decimal MinFan;
         public decimal Mul;
+        public Prediction[] TopScores;
     }
 
     /// <summary>Harmony 钩子写入的最新听牌预测快照。</summary>
@@ -52,7 +53,9 @@ namespace ScorePreview
                            : which == 1 ? bl._fanBuff
                            : (object)bl._independentBuff;
                 if (stacked == null) return outList;
-                var stackedIf = stacked as MaJiang.PlayMaJiang.Buff.IStackedBuff;
+                var stackedBase = stacked as Il2CppInterop.Runtime.InteropTypes.Il2CppObjectBase;
+                if (stackedBase == null) return outList;
+                var stackedIf = stackedBase.Cast<MaJiang.PlayMaJiang.Buff.IStackedBuff>();
                 if (stackedIf == null) return outList;
                 var payloads = stackedIf.Payloads;
                 if (payloads == null) return outList;
@@ -94,33 +97,43 @@ namespace ScorePreview
 
             bool found = false;
             decimal minFan = 0m, mul = 0m;
+            var candidates = new System.Collections.Generic.List<Prediction>();
 
             if (d1 != null)
             {
                 int n = d1.Count;
                 failMsg = "d1 n=" + n + " raw=" + tn;
                 for (int i = 0; i < n; i++)
-                    EvalHand((object)d1._entries[i].value, prs, ref found, ref minFan, ref mul, ref failMsg);
+                    EvalHand((object)d1._entries[i].value, prs, candidates,
+                        ref found, ref minFan, ref mul, ref failMsg);
             }
             else if (d2 != null)
             {
                 int n = d2.Count;
                 failMsg = "d2 n=" + n + " raw=" + tn;
                 for (int i = 0; i < n; i++)
-                    EvalHand((object)d2._entries[i].value, prs, ref found, ref minFan, ref mul, ref failMsg);
+                    EvalHand((object)d2._entries[i].value, prs, candidates,
+                        ref found, ref minFan, ref mul, ref failMsg);
             }
             else return null;
 
             if (!found) { failMsg = "no hand fan | " + failMsg; return null; }
 
+            candidates.Sort((x, y) => (x.MinFan * x.Mul).CompareTo(y.MinFan * y.Mul));
+            int topCount = Math.Min(3, candidates.Count);
+            var top = new Prediction[topCount];
+            for (int i = 0; i < topCount; i++) top[i] = candidates[i];
+
             return new Prediction
             {
                 MinFan = minFan,
-                Mul = mul
+                Mul = mul,
+                TopScores = top
             };
         }
 
         private static void EvalHand(object valueObj, PlayerRoundStatistics prs,
+            System.Collections.Generic.List<Prediction> candidates,
             ref bool found, ref decimal minFan, ref decimal mul, ref string failMsg)
         {
             if (valueObj == null) { failMsg = "val=null"; return; }
@@ -203,6 +216,20 @@ var fansRaw = hu.FanZhongs as Il2CppInterop.Runtime.InteropTypes.Il2CppObjectBas
                     minFan = f;
                     mul = m;
                     found = true;
+                }
+                if (f > 0 && m > 0)
+                {
+                    bool duplicate = false;
+                    for (int i = 0; i < candidates.Count; i++)
+                    {
+                        if (candidates[i].MinFan == f && candidates[i].Mul == m)
+                        {
+                            duplicate = true;
+                            break;
+                        }
+                    }
+                    if (!duplicate)
+                        candidates.Add(new Prediction { MinFan = f, Mul = m });
                 }
 
                 Diag("score: fans=" + inner.Count + " f=" + F(f) + " m=" + F(m)

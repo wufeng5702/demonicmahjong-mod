@@ -19,7 +19,7 @@ namespace ScorePreview
         internal static BepInEx.Logging.ManualLogSource Log;
 
         private GUIStyle _style;
-        private string _text = "计分: --\n和牌: --";
+        private string _text = "计分: --\n和牌1: --\n和牌2: --\n和牌3: --";
         private string _lastLogged;
         private string _lastDiagLogged;
         private string _lastError;
@@ -191,15 +191,23 @@ namespace ScorePreview
                     settleLine = "计分: " + jfFan + " 番?" + (LiveBase().Length > 0 ? " x " + LiveBase() : "");
             }
 
-            // 和牌行：听牌钩子预测（底分实时 x 最小番 x 倍率）。
-            // 番数优先用游戏听牌面板直接显示的 FanNum（多等待取最小），这是权威值，不推算。
-            string huLine = "和牌: --";
+            // 和牌行：听牌钩子预测（底分实时 x 番数 x 倍率），按得分取前三。
+            // 没有预测快照时再用游戏听牌面板的 FanNum 作为单项兜底。
+            var huLines = new System.Collections.Generic.List<string> { "和牌1: --", "和牌2: --", "和牌3: --" };
             bool hasMul = TingSnap.Has && TingSnap.Cur.Mul > 0;
             decimal mul = hasMul ? TingSnap.Cur.Mul : 0;
-            if (hasMul && TryFanNumMin(out int uiFan))
-                huLine = "和牌: " + MakeEst(LiveBase(), (decimal)(long)uiFan, mul);
+            if (hasMul && TingSnap.Cur.TopScores != null && TingSnap.Cur.TopScores.Length > 0)
+            {
+                for (int i = 0; i < TingSnap.Cur.TopScores.Length && i < huLines.Count; i++)
+                {
+                    var item = TingSnap.Cur.TopScores[i];
+                    huLines[i] = "和牌" + (i + 1) + ": " + MakeEst(LiveBase(), item.MinFan, item.Mul);
+                }
+            }
+            else if (hasMul && TryFanNumMin(out int uiFan))
+                huLines[0] = "和牌1: " + MakeEst(LiveBase(), (decimal)(long)uiFan, mul);
             else if (TingSnap.Has && TingSnap.Cur.MinFan > 0)
-                huLine = "和牌: " + MakeEst(LiveBase(), TingSnap.Cur.MinFan, TingSnap.Cur.Mul);
+                huLines[0] = "和牌1: " + MakeEst(LiveBase(), TingSnap.Cur.MinFan, TingSnap.Cur.Mul);
             else
             {
                 var prs = PlayerRoundStatistics.Instance;
@@ -208,14 +216,25 @@ namespace ScorePreview
                     string fail = "";
                     var q = Comp.Try(_hand.CanHuPaiMianPayloads, ref fail);
                     if (q.HasValue)
-                        huLine = "和牌: " + MakeEst(LiveBase(), q.Value.MinFan, q.Value.Mul);
+                    {
+                        var items = q.Value.TopScores;
+                        if (items != null && items.Length > 0)
+                            for (int i = 0; i < items.Length && i < huLines.Count; i++)
+                                huLines[i] = "和牌" + (i + 1) + ": "
+                                    + MakeEst(LiveBase(), items[i].MinFan, items[i].Mul);
+                        else
+                            huLines[0] = "和牌1: " + MakeEst(LiveBase(), q.Value.MinFan, q.Value.Mul);
+                    }
                 }
             }
 
-            if (settleLine.EndsWith("--") && LastSettleFactors == null && huLine.EndsWith("--"))
-                _text = "计分: --\n和牌: --";
+            bool noHu = true;
+            for (int i = 0; i < huLines.Count; i++)
+                if (!huLines[i].EndsWith("--")) { noHu = false; break; }
+            if (settleLine.EndsWith("--") && LastSettleFactors == null && noHu)
+                _text = "计分: --\n" + string.Join("\n", huLines.ToArray());
             else
-                _text = settleLine + "\n" + huLine;
+                _text = settleLine + "\n" + string.Join("\n", huLines.ToArray());
 
             if (_text != _lastLogged)
             {
@@ -303,7 +322,7 @@ namespace ScorePreview
                     }
                     // 稳定值用文本（数字动画/文本都最终收敛到目标；1234567 占位不算）。
                     if (m0 != "" && m1 != "" && m2 != "" && total != ""
-                        && ReadyNum(m0) && ReadyNum(m1) && ReadyNum(m2) && total.Contains("sprite"))
+                        && ReadyNum(m0) && ReadyNum(m1) && ReadyNum(m2) && ReadyNum(total))
                         LastSettleFactors = m0 + " x " + m1 + " x " + m2 + " = " + total;
                 }
                 var panel = GetPanelNow();
@@ -318,7 +337,8 @@ namespace ScorePreview
                     sb.Append(" lastHook=fan").Append(TingSnap.Cur.MinFan)
                       .Append(" mul").Append(TingSnap.Cur.Mul);
                 string line = sb.ToString();
-                if (m0 != "" && m1 != "" && m2 != "" && total != "")
+                if (m0 != "" && m1 != "" && m2 != "" && total != ""
+                    && ReadyNum(m0) && ReadyNum(m1) && ReadyNum(m2) && ReadyNum(total))
                     LastSettleFactors = m0 + " x " + m1 + " x " + m2 + " = " + total;
                 if (line != _lastSettleLine)
                 {
@@ -353,12 +373,12 @@ namespace ScorePreview
         }
 
         /// <summary>底分 × 番数 × 倍率 = 预计分。底分读不到时显示 base?。
-        /// 两个标签（计分:/和牌:）由调用方拼，这里不再带 Est: 前缀。</summary>
+        /// 标签由调用方拼，这里不再带 Est: 前缀。</summary>
         private static string MakeEst(string baseS, decimal fan, decimal mul)
         {
             if (fan <= 0) return "--";
             decimal b;
-            string bs = baseS == null ? "" : baseS.Trim();
+            string bs = CleanNumber(baseS);
             if (decimal.TryParse(bs, NumberStyles.Number, CultureInfo.InvariantCulture, out b))
             {
                 string total = Fmt(b * fan * mul);
@@ -401,26 +421,33 @@ namespace ScorePreview
                 if (prs != null && prs._baseScore != null)
                 {
                     var t = prs._baseScore.GetComponentInChildren<TMPro.TMP_Text>();
-                    if (t != null && t.m_text != null) return t.m_text.Trim();
+                    if (t != null && t.m_text != null)
+                    {
+                        string value = CleanNumber(t.m_text);
+                        if (value.Length > 0) return value;
+                    }
                 }
                 var all = UnityEngine.Object.FindObjectsOfType<TMPro.TMP_Text>();
                 for (int i = 0; i < all.Length; i++)
                 {
                     if (all[i] != null && all[i].m_text != null && all[i].gameObject.name == "BaseScoreText")
                     {
-                        string s = all[i].m_text.Trim();
+                        string s = CleanNumber(all[i].m_text);
                         if (s.Length > 0) return s;
                     }
                 }
                 for (int i = 0; i < all.Length; i++)
                 {
                     if (all[i] == null || all[i].m_text == null) continue;
-                    string s = all[i].m_text.Trim();
+                    string s = CleanNumber(all[i].m_text);
                     if (s.Length > 0 && s.Length < 10 && IsAllNums(s))
                     {
                         var p = all[i].transform.parent;
                         if (p != null && (p.name == "BaseScoreText"))
-                            return s;
+                        {
+                            string value = CleanNumber(s);
+                            if (value.Length > 0) return value;
+                        }
                     }
                 }
             }
@@ -605,7 +632,24 @@ namespace ScorePreview
         private static string Sc(TMPro.TMP_Text text)
         {
             if (text == null || text.m_text == null) return "";
-            return text.m_text.Trim();
+            return CleanNumber(text.m_text);
+        }
+
+        private static string CleanNumber(string text)
+        {
+            if (string.IsNullOrEmpty(text)) return "";
+            var result = new System.Text.StringBuilder();
+            bool inTag = false;
+            for (int i = 0; i < text.Length; i++)
+            {
+                char c = text[i];
+                if (c == '<') { inTag = true; continue; }
+                if (c == '>') { inTag = false; continue; }
+                if (inTag) continue;
+                if ((c >= '0' && c <= '9') || c == ',' || c == '.' || c == '-')
+                    result.Append(c);
+            }
+            return result.ToString();
         }
 
         private PlayerHandPaiMianContainer TryGetHand()
@@ -636,7 +680,7 @@ namespace ScorePreview
 
         private void OnGUI()
         {
-            GUI.Label(new Rect(12, 12 + _yOffset, 620, 40), _text, _style);
+            GUI.Label(new Rect(12, 12 + _yOffset, 620, 140), _text, _style);
         }
     }
 }
