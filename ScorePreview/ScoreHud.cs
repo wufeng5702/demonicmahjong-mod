@@ -184,30 +184,34 @@ namespace ScorePreview
                 settleLine = "计分: " + LastSettleFactors;
             else if (TryJiFenFan(out int jfFan) && jfFan > 0)
             {
-                decimal jfMul = TingSnap.Has && TingSnap.Cur.Mul > 0 ? TingSnap.Cur.Mul : LiveMul();
+                decimal jfMul = LiveMul();
+                if (jfMul <= 0 && TingSnap.Has) jfMul = TingSnap.Cur.Mul;
+                decimal totalFan = jfFan + PlayerFanBuff();
                 if (jfMul > 0)
-                    settleLine = "计分: " + MakeEst(LiveBase(), (decimal)(long)jfFan, jfMul);
+                    settleLine = "计分: " + MakeEst(PredictedBase(), totalFan, jfMul);
                 else
-                    settleLine = "计分: " + jfFan + " 番?" + (LiveBase().Length > 0 ? " x " + LiveBase() : "");
+                    settleLine = "计分: " + totalFan + " 番?" + (PredictedBase().Length > 0 ? " x " + PredictedBase() : "");
             }
 
             // 和牌行：听牌钩子预测（底分实时 x 番数 x 倍率），按得分取前三。
             // 没有预测快照时再用游戏听牌面板的 FanNum 作为单项兜底。
             var huLines = new System.Collections.Generic.List<string> { "和牌1: --", "和牌2: --", "和牌3: --" };
-            bool hasMul = TingSnap.Has && TingSnap.Cur.Mul > 0;
-            decimal mul = hasMul ? TingSnap.Cur.Mul : 0;
+            decimal liveMul = LiveMul();
+            bool hasMul = liveMul > 0 || (TingSnap.Has && TingSnap.Cur.Mul > 0);
+            decimal mul = liveMul > 0 ? liveMul : TingSnap.Cur.Mul;
             if (hasMul && TingSnap.Cur.TopScores != null && TingSnap.Cur.TopScores.Length > 0)
             {
                 for (int i = 0; i < TingSnap.Cur.TopScores.Length && i < huLines.Count; i++)
                 {
                     var item = TingSnap.Cur.TopScores[i];
-                    huLines[i] = "和牌" + (i + 1) + ": " + MakeEst(LiveBase(), item.MinFan, item.Mul);
+                    huLines[i] = "和牌" + (i + 1) + ": " + MakeEst(
+                        item.BaseScore > 0 ? Fmt(item.BaseScore) : LiveBase(), item.MinFan, mul);
                 }
             }
             else if (hasMul && TryFanNumMin(out int uiFan))
-                huLines[0] = "和牌1: " + MakeEst(LiveBase(), (decimal)(long)uiFan, mul);
+                huLines[0] = "和牌1: " + MakeEst(PredictedBase(), (decimal)(long)uiFan, mul);
             else if (TingSnap.Has && TingSnap.Cur.MinFan > 0)
-                huLines[0] = "和牌1: " + MakeEst(LiveBase(), TingSnap.Cur.MinFan, TingSnap.Cur.Mul);
+                huLines[0] = "和牌1: " + MakeEst(PredictedBase(), TingSnap.Cur.MinFan, TingSnap.Cur.Mul);
             else
             {
                 var prs = PlayerRoundStatistics.Instance;
@@ -221,9 +225,10 @@ namespace ScorePreview
                         if (items != null && items.Length > 0)
                             for (int i = 0; i < items.Length && i < huLines.Count; i++)
                                 huLines[i] = "和牌" + (i + 1) + ": "
-                                    + MakeEst(LiveBase(), items[i].MinFan, items[i].Mul);
+                                    + MakeEst(items[i].BaseScore > 0 ? Fmt(items[i].BaseScore) : LiveBase(),
+                                        items[i].MinFan, items[i].Mul);
                         else
-                            huLines[0] = "和牌1: " + MakeEst(LiveBase(), q.Value.MinFan, q.Value.Mul);
+                            huLines[0] = "和牌1: " + MakeEst(PredictedBase(), q.Value.MinFan, q.Value.Mul);
                     }
                 }
             }
@@ -379,10 +384,10 @@ namespace ScorePreview
             if (fan <= 0) return "--";
             decimal b;
             string bs = CleanNumber(baseS);
-            if (decimal.TryParse(bs, NumberStyles.Number, CultureInfo.InvariantCulture, out b))
+            if (TryParseDisplayNumber(baseS, out b))
             {
                 string total = Fmt(b * fan * mul);
-                return bs + " x " + Fmt(fan) + " x " + Fmt(mul) + " = " + total;
+                return Fmt(b) + " x " + Fmt(fan) + " x " + Fmt(mul) + " = " + total;
             }
             return "base? x " + Fmt(fan) + " x " + Fmt(mul);
         }
@@ -420,12 +425,19 @@ namespace ScorePreview
                 var prs = PlayerRoundStatistics.Instance;
                 if (prs != null && prs._baseScore != null)
                 {
-                    var t = prs._baseScore.GetComponentInChildren<TMPro.TMP_Text>();
-                    if (t != null && t.m_text != null)
+                    var texts = prs._baseScore.GetComponentsInChildren<TMPro.TMP_Text>(true);
+                    decimal best = 0m;
+                    bool found = false;
+                    for (int i = 0; i < texts.Length; i++)
                     {
-                        string value = CleanNumber(t.m_text);
-                        if (value.Length > 0) return value;
+                        if (texts[i] != null && TryParseDisplayNumber(texts[i].m_text, out decimal value)
+                            && (!found || value > best))
+                        {
+                            best = value;
+                            found = true;
+                        }
                     }
+                    if (found) return Fmt(best);
                 }
                 var all = UnityEngine.Object.FindObjectsOfType<TMPro.TMP_Text>();
                 for (int i = 0; i < all.Length; i++)
@@ -452,6 +464,13 @@ namespace ScorePreview
                 }
             }
             catch (Exception) { }
+            return "";
+        }
+
+        private static string PredictedBase()
+        {
+            if (TingSnap.Has && TingSnap.Cur.BaseScore > 0m)
+                return Fmt(TingSnap.Cur.BaseScore);
             return "";
         }
 
@@ -520,14 +539,44 @@ namespace ScorePreview
                     if (t == null || t.m_text == null) continue;
                     if (t.gameObject.name != "IndependentText") continue;
                     if (!HasAncestor(t, "PlayerStates")) continue;
-                    string s = t.m_text.Trim();
-                    if (decimal.TryParse(s, System.Globalization.NumberStyles.Float,
-                            System.Globalization.CultureInfo.InvariantCulture, out decimal m) && m > 0)
+                    if (TryParseDisplayNumber(t.m_text, out decimal m) && m > 0)
                         return m;
                 }
             }
             catch (Exception) { }
             return 0;
+        }
+
+        private static decimal PlayerFanBuff()
+        {
+            try
+            {
+                var texts = UnityEngine.Object.FindObjectsOfType<TMPro.TMP_Text>();
+                decimal best = 0m;
+                for (int i = 0; i < texts.Length; i++)
+                {
+                    var t = texts[i];
+                    if (t == null || t.m_text == null || t.gameObject.name != "FanText") continue;
+                    if (!HasAncestor(t, "PlayerStates")) continue;
+                    if (TryParseDisplayNumber(t.m_text, out decimal value) && value > best)
+                        best = value;
+                }
+                return best;
+            }
+            catch (Exception) { return 0m; }
+        }
+
+        private static decimal DecimalValue(Il2CppSystem.Decimal value)
+        {
+            try
+            {
+                int scale = value.Scale;
+                if (scale >= 0 && scale <= 28)
+                    return new decimal(unchecked((int)value.Low), unchecked((int)value.Mid),
+                        unchecked((int)value.High), value.IsNegative, (byte)scale);
+            }
+            catch (Exception) { }
+            return -1m;
         }
 
         private float _nextScan;
@@ -650,6 +699,36 @@ namespace ScorePreview
                     result.Append(c);
             }
             return result.ToString();
+        }
+
+        private static bool TryParseDisplayNumber(string text, out decimal value)
+        {
+            value = 0m;
+            if (string.IsNullOrEmpty(text)) return false;
+            string raw = text.Trim();
+            var plain = new System.Text.StringBuilder(raw.Length);
+            bool inTag = false;
+            for (int i = 0; i < raw.Length; i++)
+            {
+                if (raw[i] == '<') { inTag = true; continue; }
+                if (raw[i] == '>') { inTag = false; continue; }
+                if (!inTag) plain.Append(raw[i]);
+            }
+            raw = plain.ToString().Trim();
+            raw = raw.Replace(",", "").Replace(" ", "");
+            decimal scale = 1m;
+            if (raw.EndsWith("M", StringComparison.OrdinalIgnoreCase))
+            {
+                scale = 1000000m;
+                raw = raw.Substring(0, raw.Length - 1);
+            }
+            else if (raw.EndsWith("K", StringComparison.OrdinalIgnoreCase))
+            {
+                scale = 1000m;
+                raw = raw.Substring(0, raw.Length - 1);
+            }
+            return decimal.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out value)
+                && (value *= scale) >= 0m;
         }
 
         private PlayerHandPaiMianContainer TryGetHand()

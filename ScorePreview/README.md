@@ -11,8 +11,9 @@
   游戏结算计算出的结果，并以听牌面板 `FanNum` 作为兜底（`<color=#75D962>16番`）；
   - 计分番数 = **计分按钮**上的合计（`JiFen/FenXing/ExpandedButton/Total`，如 `6 番`，
     与和牌预览不是同一处）。
-- 底分 = 实时 `BaseScoreText`；倍率 = 听牌钩子算得的精确值（与结算一致），缺省时读玩家
-  `PlayerStates/Independent`（如 2.3）。
+- 底分 = `ScoreBoard.PlayerScore` 精确值（UI 的 `K/M` 缩写只作后备）；计分行番数 =
+  计分按钮番数 + 玩家 `FanText`（包含遗物/灵俑 fan buff）；倍率优先读取玩家
+  `PlayerStates/Independent/IndependentText`，避免 `GetTotalScore` 在当前运行时的错误解码。
 - 原则：与游戏结算公式 `总 = 底分 × 番数 × 倍率` 一致；不修改游戏本体、不注入逻辑。
 
 ## 现状（2026-08-30）

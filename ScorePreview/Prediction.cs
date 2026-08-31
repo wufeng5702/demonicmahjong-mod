@@ -16,6 +16,7 @@ namespace ScorePreview
 {
     public struct Prediction
     {
+        public decimal BaseScore;
         public decimal MinFan;
         public decimal Mul;
         public Prediction[] TopScores;
@@ -73,6 +74,35 @@ namespace ScorePreview
             return outList;
         }
 
+        public static bool TryGetBuffStats(PlayerRoundStatistics prs,
+            out decimal baseScore, out decimal fan, out decimal multiplier)
+        {
+            baseScore = 0m;
+            fan = 0m;
+            multiplier = 1m;
+            try
+            {
+                var bl = prs != null ? prs.BuffList : null;
+                if (bl == null) return false;
+                var b1 = RealBuffList(prs, 0);
+                var b2 = RealBuffList(prs, 1);
+                var b3 = RealBuffList(prs, 2);
+                var stats = bl.Get3Statistics(
+                    b1.Cast<II.IEnumerable<FloatBuffPayload>>(),
+                    b2.Cast<II.IEnumerable<FloatBuffPayload>>(),
+                    b3.Cast<II.IEnumerable<FloatBuffPayload>>());
+                baseScore = D(stats.Item1);
+                fan = D(stats.Item2);
+                multiplier = D(stats.Item3);
+                return multiplier > 0m;
+            }
+            catch (Exception e)
+            {
+                Diag("buff stats failed: " + First(e.ToString()));
+                return false;
+            }
+        }
+
         public static Prediction? Try(IReadOnlyDictionary<PaiMianPayload, IReadOnlyList<HuResult>> raw, ref string failMsg)
         {
             failMsg = "";
@@ -96,7 +126,7 @@ namespace ScorePreview
             }
 
             bool found = false;
-            decimal minFan = 0m, mul = 0m;
+            decimal baseScore = 0m, minFan = 0m, mul = 0m;
             var candidates = new System.Collections.Generic.List<Prediction>();
 
             if (d1 != null)
@@ -105,7 +135,7 @@ namespace ScorePreview
                 failMsg = "d1 n=" + n + " raw=" + tn;
                 for (int i = 0; i < n; i++)
                     EvalHand((object)d1._entries[i].value, prs, candidates,
-                        ref found, ref minFan, ref mul, ref failMsg);
+                        ref found, ref baseScore, ref minFan, ref mul, ref failMsg);
             }
             else if (d2 != null)
             {
@@ -113,7 +143,7 @@ namespace ScorePreview
                 failMsg = "d2 n=" + n + " raw=" + tn;
                 for (int i = 0; i < n; i++)
                     EvalHand((object)d2._entries[i].value, prs, candidates,
-                        ref found, ref minFan, ref mul, ref failMsg);
+                        ref found, ref baseScore, ref minFan, ref mul, ref failMsg);
             }
             else return null;
 
@@ -126,6 +156,7 @@ namespace ScorePreview
 
             return new Prediction
             {
+                BaseScore = baseScore,
                 MinFan = minFan,
                 Mul = mul,
                 TopScores = top
@@ -134,7 +165,8 @@ namespace ScorePreview
 
         private static void EvalHand(object valueObj, PlayerRoundStatistics prs,
             System.Collections.Generic.List<Prediction> candidates,
-            ref bool found, ref decimal minFan, ref decimal mul, ref string failMsg)
+            ref bool found, ref decimal baseScore, ref decimal minFan, ref decimal mul,
+            ref string failMsg)
         {
             if (valueObj == null) { failMsg = "val=null"; return; }
             var raw = valueObj as Il2CppInterop.Runtime.InteropTypes.Il2CppObjectBase;
@@ -197,22 +229,25 @@ var fansRaw = hu.FanZhongs as Il2CppInterop.Runtime.InteropTypes.Il2CppObjectBas
                     b2.Cast<II.IReadOnlyList<FloatBuffPayload>>(),
                     b3.Cast<II.IReadOnlyList<FloatBuffPayload>>());
 
-                decimal f, m;
+                decimal b, f, m;
                 var wins = ReadTupleWins(t);
                 if (wins != null)
                 {
                     // 原生内存窗口已实证：+16D=番数(fanSum 精确匹配)、+32D=倍率。
+                    b = wins[0];
                     f = wins[1];
                     m = wins[2];
                 }
                 else
                 {
+                    b = D(t.Item1);
                     f = D(t.Item2);
                     m = D(t.Item3);
                 }
 
                 if (!found || f < minFan)
                 {
+                    baseScore = b;
                     minFan = f;
                     mul = m;
                     found = true;
@@ -229,7 +264,7 @@ var fansRaw = hu.FanZhongs as Il2CppInterop.Runtime.InteropTypes.Il2CppObjectBas
                         }
                     }
                     if (!duplicate)
-                        candidates.Add(new Prediction { MinFan = f, Mul = m });
+                        candidates.Add(new Prediction { BaseScore = b, MinFan = f, Mul = m });
                 }
 
                 Diag("score: fans=" + inner.Count + " f=" + F(f) + " m=" + F(m)
