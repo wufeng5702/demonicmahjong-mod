@@ -15,19 +15,30 @@
 - [AutoContinue/README.md](AutoContinue/README.md)
 
 ## 快速开始（一键安装 / 卸载）
+1. **下载**  
+   下载最新版代码： [**`source.zip`**](https://github.com/wufeng5702/demonicmahjong-mod/releases/latest/download/source.zip)。
 
-```bat
-install_mods.bat
-```
+2. **解压**  
+   将下载的 `.zip` 文件解压到**任意文件夹**（建议路径不含中文和空格，例如 `D:\DemonicMahjongMods`）。
+
+3. **运行**  
+   进入解压后的文件夹，**双击** `install_mods.bat`。  
+   - 如果 Windows 提示“无法验证发布者”，请点击“仍要运行”。  
+   - 脚本会显示菜单，输入要安装的 Mod 编号（多个用逗号隔开，例如 `1,2`），按回车即可。  
+   - 全程自动化：自动识别游戏目录 → 自动补装 BepInEx → 自动编译并安装选中的 Mod。  
+   - 如果电脑没有 `.NET SDK`，脚本会提示，请先安装 [.NET 6.0 SDK](https://dotnet.microsoft.com/download/dotnet/6.0) 后再重试。
+
+> ✅ 首次安装 BepInEx 后，请**先启动一次游戏再退出**，让游戏生成 `BepInEx\interop\` 文件夹，之后脚本才能正常编译 Mod。
+
+
 
 运行后脚本会：
 
 1. **询问你要装哪些 mod**（可多选）；一个都不选则直接退出，连依赖也不安装。
 2. **自动探测游戏目录**：Steam 注册表 + `libraryfolders.vdf`（支持多磁盘库）→ 兜底仓库根 [.env](.env)
    的 `DEMONIC_MAHJONG_DIR` → 兜底手动输入。
-3. **自动补装依赖**：检测到缺 BepInEx 时从 GitHub 下载 IL2CPP 版并解压（`BepInEx\` + `winhttp.dll` +
-   `doorstop_config.ini` + `dotnet\`）；直连失败自动换镜像 `https://gh.ddlc.top/<原地址>`；完成后隐藏
-   BepInEx 日志控制台黑窗口。
+3. **自动补装依赖**：检测到缺 BepInEx 时从 BepInEx 开发构建页面下载所需依赖（`BepInEx\` + `winhttp.dll` +
+   `doorstop_config.ini` + `dotnet\`）；完成后会自动隐藏 BepInEx 日志控制台黑窗口。
 4. **逐个编译并安装**选中的 mod 到 `游戏\BepInEx\plugins\`，缺失的配置文件自动生成默认模板。
 
 常用参数（透传给 `install_mods.ps1`）：
@@ -42,6 +53,8 @@ powershell -File install_mods.ps1 -Mods 1,2 -GameDir D:\其他\目录   :: 手�
 
 > 首次装 BepInEx 后，`interop\` 要等**启动一次游戏**才会自动生成（此后才能编译 mod）：
 > 先启动游戏退出，再重跑 `install_mods.bat`。
+
+
 
 ## 手动构建 / 安装
 
