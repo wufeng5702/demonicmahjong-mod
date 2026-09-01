@@ -28,11 +28,7 @@ namespace SLMenuTrigger
         // ========== Unity 生命周期 ==========
         private void Update()
         {
-            // 1. 本局已触发过 → 不再做任何检测
-            if (_hasTriggeredThisRound)
-                return;
-
-            // 2. Mod 被禁用 → 强制恢复并重置等待状态
+            // 1. Mod 被禁用 → 强制恢复并重置等待状态（最高优先级）
             if (!Plugin.Enabled)
             {
                 if (_triggered)
@@ -45,17 +41,22 @@ namespace SLMenuTrigger
                 return;
             }
 
-            // 3. 如果已触发暂停，监听恢复条件
+            // 2. 如果已触发暂停，监听外部恢复（例如按ESC后继续）
             if (_triggered)
             {
                 if (Time.timeScale == 1f)
                 {
-                    _triggered = false;
+                    _triggered = false;                     // 清除暂停状态，提示框消失
                     _resumeCooldown = Time.unscaledTime + 2f;
                     Plugin.Log.LogInfo("Game resumed by other means. Cooldown 2s.");
                 }
+                // 无论是否恢复，都直接返回，避免继续执行后续检测
                 return;
             }
+
+            // 3. 本局已经处理过牌堆耗尽（无论是否触发暂停）→ 跳过所有检测
+            if (_hasTriggeredThisRound)
+                return;
 
             // 4. 如果游戏处于暂停状态（非我们引起的），不检测
             if (Time.timeScale == 0f) return;
@@ -108,14 +109,16 @@ namespace SLMenuTrigger
                     Plugin.Log.LogInfo($"牌堆耗尽! Player {playerScore} < Boss {aiScore}. Pausing.");
                     _triggered = true;
                     Time.timeScale = 0f;
-                    _hasTriggeredThisRound = true;   // 标记本局已触发
                 }
                 else
                 {
                     Plugin.Log.LogInfo($"牌堆耗尽，但玩家 {playerScore} >= Boss {aiScore}，不触发暂停。");
-                    // 注意：这里未触发暂停，不设置 _hasTriggeredThisRound，因此后续牌堆再次耗尽仍会检测
                 }
+
+                // 无论是否触发暂停，都标记本局已处理过牌堆耗尽，不再重复检测
+                _hasTriggeredThisRound = true;
             }
+            // 若未满足条件（有效且未超时），则继续等待，不做任何操作
         }
 
         // ========== 直接读取分数（强制刷新） ==========
