@@ -187,10 +187,16 @@ namespace ScorePreview
                 decimal jfMul = LiveMul();
                 if (jfMul <= 0 && TingSnap.Has) jfMul = TingSnap.Cur.Mul;
                 decimal totalFan = jfFan + PlayerFanBuff();
+
+                // 底分来源：优先听牌预测，否则实时 UI
+                string baseStr = PredictedBase();
+                if (string.IsNullOrEmpty(baseStr))
+                    baseStr = LiveBase();
+
                 if (jfMul > 0)
-                    settleLine = "计分: " + MakeEst(PredictedBase(), totalFan, jfMul);
+                    settleLine = "计分: " + MakeEst(baseStr, totalFan, jfMul);
                 else
-                    settleLine = "计分: " + totalFan + " 番?" + (PredictedBase().Length > 0 ? " x " + PredictedBase() : "");
+                    settleLine = "计分: " + totalFan + " 番?" + (baseStr.Length > 0 ? " x " + baseStr : "");
             }
 
             // 和牌行：听牌钩子预测（底分实时 x 番数 x 倍率），按得分取前三。
@@ -422,51 +428,55 @@ namespace ScorePreview
         {
             try
             {
+                // 1. 优先从 Buff 系统精确读取底分（不受 UI 缩略影响）
                 var prs = PlayerRoundStatistics.Instance;
-                if (prs != null && prs._baseScore != null)
+                if (prs != null)
                 {
-                    var texts = prs._baseScore.GetComponentsInChildren<TMPro.TMP_Text>(true);
-                    decimal best = 0m;
-                    bool found = false;
-                    for (int i = 0; i < texts.Length; i++)
+                    if (Comp.TryGetBuffStats(prs, out decimal baseScore, out _, out _))
                     {
-                        if (texts[i] != null && TryParseDisplayNumber(texts[i].m_text, out decimal value)
-                            && (!found || value > best))
-                        {
-                            best = value;
-                            found = true;
-                        }
+                        if (baseScore > 0)
+                            return Fmt(baseScore);
                     }
-                    if (found) return Fmt(best);
                 }
+
+                // 2. 后备：从 UI 文本解析（原有逻辑，保留兼容性）
                 var all = UnityEngine.Object.FindObjectsOfType<TMPro.TMP_Text>();
-                for (int i = 0; i < all.Length; i++)
+                foreach (var t in all)
                 {
-                    if (all[i] != null && all[i].m_text != null && all[i].gameObject.name == "BaseScoreText")
+                    if (t == null || string.IsNullOrEmpty(t.m_text)) continue;
+                    if (t.gameObject.name == "BaseScoreText")
                     {
-                        string s = CleanNumber(all[i].m_text);
-                        if (s.Length > 0) return s;
+                        if (TryParseDisplayNumber(t.m_text, out decimal value))
+                            return Fmt(value);
                     }
                 }
-                for (int i = 0; i < all.Length; i++)
+
+                foreach (var t in all)
                 {
-                    if (all[i] == null || all[i].m_text == null) continue;
-                    string s = CleanNumber(all[i].m_text);
-                    if (s.Length > 0 && s.Length < 10 && IsAllNums(s))
+                    if (t == null || string.IsNullOrEmpty(t.m_text)) continue;
+                    var p = t.transform.parent;
+                    if (p != null && p.name == "BaseScoreText")
                     {
-                        var p = all[i].transform.parent;
-                        if (p != null && (p.name == "BaseScoreText"))
-                        {
-                            string value = CleanNumber(s);
-                            if (value.Length > 0) return value;
-                        }
+                        if (TryParseDisplayNumber(t.m_text, out decimal value))
+                            return Fmt(value);
+                    }
+                }
+
+                foreach (var t in all)
+                {
+                    if (t == null || string.IsNullOrEmpty(t.m_text)) continue;
+                    string s = t.m_text;
+                    if (s.Contains("底分"))
+                    {
+                        string cleaned = CleanNumber(s);
+                        if (TryParseDisplayNumber(cleaned, out decimal value))
+                            return Fmt(value);
                     }
                 }
             }
             catch (Exception) { }
             return "";
         }
-
         private static string PredictedBase()
         {
             if (TingSnap.Has && TingSnap.Cur.BaseScore > 0m)

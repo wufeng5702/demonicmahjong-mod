@@ -100,6 +100,9 @@ install.bat      → 覆盖安装到游戏 BepInEx\plugins\
 - HUD 每轮打印：`hud -> 计分: ... | 和牌1: ... | 和牌2: ... | 和牌3: ...`。
 - 结算镜像：`[settle] ... mul0/mul1/mul2/total` 与游戏面板一致。
 
+## 已知问题
+- 计分行精度问题：底分从游戏 UI 文本读取（如 500M），解析时会丢失被折叠的精度。
+
 ## 技术说明 / 坑（重要，改代码必读）
 
 - **游戏主体代码在 `MaJiang.dll`，不是 `Assembly-CSharp.dll`**。

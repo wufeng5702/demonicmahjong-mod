@@ -180,7 +180,7 @@ namespace ScorePreview
             {
                 var hu = results[j];
 
-var fansRaw = hu.FanZhongs as Il2CppInterop.Runtime.InteropTypes.Il2CppObjectBase;
+                var fansRaw = hu.FanZhongs as Il2CppInterop.Runtime.InteropTypes.Il2CppObjectBase;
                 if (fansRaw == null) { failMsg = "fans=null j=" + j; continue; }
 
                 var inner = new Il2CppSystem.Collections.Generic.List<FanZhong>();
@@ -335,21 +335,21 @@ var fansRaw = hu.FanZhongs as Il2CppInterop.Runtime.InteropTypes.Il2CppObjectBas
             long baseOff = tobj.Pointer.ToInt64() + 0x10;
             try
             {
-            var sb = new System.Text.StringBuilder("tuple @0x" + baseOff.ToString("X") + " win16-any:");
-            for (int i = 0; i < 9; i++)
-            {
-                var p = new IntPtr(baseOff + 16L * i);
-                int w0 = Marshal.ReadInt32(p, 0);
-                int w1 = Marshal.ReadInt32(p, 4);
-                int w2 = Marshal.ReadInt32(p, 8);
-                int w3 = Marshal.ReadInt32(p, 12);
-                decimal v = TryDecode(w2, w3, w1, w0);
-                sb.Append(" +" + (i * 16) + "D=" + Hex(w0) + " " + Hex(w1) + " " + Hex(w2) + " " + Hex(w3)
-                    + "=" + Kw(v));
-                if (i < 8) sb.Append(" | ");
-            }
-            sb.Append(" picked=(f=" + F(f) + ",m=" + F(m) + ")");
-            Diag(sb.ToString());
+                var sb = new System.Text.StringBuilder("tuple @0x" + baseOff.ToString("X") + " win16-any:");
+                for (int i = 0; i < 9; i++)
+                {
+                    var p = new IntPtr(baseOff + 16L * i);
+                    int w0 = Marshal.ReadInt32(p, 0);
+                    int w1 = Marshal.ReadInt32(p, 4);
+                    int w2 = Marshal.ReadInt32(p, 8);
+                    int w3 = Marshal.ReadInt32(p, 12);
+                    decimal v = TryDecode(w2, w3, w1, w0);
+                    sb.Append(" +" + (i * 16) + "D=" + Hex(w0) + " " + Hex(w1) + " " + Hex(w2) + " " + Hex(w3)
+                        + "=" + Kw(v));
+                    if (i < 8) sb.Append(" | ");
+                }
+                sb.Append(" picked=(f=" + F(f) + ",m=" + F(m) + ")");
+                Diag(sb.ToString());
             }
             catch (Exception e) { Diag("tuple read failed: " + FirstLine(e.ToString())); }
         }
@@ -524,22 +524,22 @@ var fansRaw = hu.FanZhongs as Il2CppInterop.Runtime.InteropTypes.Il2CppObjectBas
             int[] strides = { 12, 16 };
             long bestScore = -1; int bestB = 0, bestS = 12, bestO = 8;
             for (int bi = 0; bi < 2; bi++)
-            for (int si = 0; si < 2; si++)
-            for (int oi = 0; oi < 4; oi++)
-            {
-                int voff = oi * 4;
-                long score = 0; bool bad = false;
-                for (int i = 0; i < n; i++)
-                {
-                    int v;
-                    try { v = Marshal.ReadInt32(new IntPtr(Pl + bases[bi] + (long)i * strides[si] + voff)); }
-                    catch (Exception) { bad = true; break; }
-                    if (v < 0 || v > 1024) { bad = true; break; }
-                    score += v;
-                }
-                if (bad) continue;
-                if (score > bestScore || (score == bestScore && strides[si] > bestS)) { bestScore = score; bestB = bi; bestS = strides[si]; bestO = voff; }
-            }
+                for (int si = 0; si < 2; si++)
+                    for (int oi = 0; oi < 4; oi++)
+                    {
+                        int voff = oi * 4;
+                        long score = 0; bool bad = false;
+                        for (int i = 0; i < n; i++)
+                        {
+                            int v;
+                            try { v = Marshal.ReadInt32(new IntPtr(Pl + bases[bi] + (long)i * strides[si] + voff)); }
+                            catch (Exception) { bad = true; break; }
+                            if (v < 0 || v > 1024) { bad = true; break; }
+                            score += v;
+                        }
+                        if (bad) continue;
+                        if (score > bestScore || (score == bestScore && strides[si] > bestS)) { bestScore = score; bestB = bi; bestS = strides[si]; bestO = voff; }
+                    }
             if (bestScore >= 0 && n > 0)
             {
                 var sb = new System.Text.StringBuilder("slotcfg base=");
