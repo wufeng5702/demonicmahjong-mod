@@ -13,18 +13,26 @@ namespace SLMenuTrigger
         private readonly string _deckPath = "Canvas/RoundStatistics/PaiLeftCountPanel/PlayerSwapPaiLeftCountText";
 
         // ========== 缓存字段 ==========
-        private TMP_Text _playerTextCache;
-        private TMP_Text _aiTextCache;
         private TMP_Text _deckTextCache;
 
         // ========== 状态字段 ==========
         private bool _triggered = false;
         private float _resumeCooldown = 0f;
+        private bool _hasTriggeredThisRound = false;   // 新增：本局是否已触发过暂停
+
+        // 等待玩家总分更新
+        private bool _waitingForPlayerScore = false;
+        private float _waitStartTime;
+        private const float WAIT_TIMEOUT = 0.5f; // 等待 0.5 秒，UI 更新足够
 
         // ========== Unity 生命周期 ==========
         private void Update()
         {
-            // 1. Mod 被禁用 → 强制恢复
+            // 1. 本局已触发过 → 不再做任何检测
+            if (_hasTriggeredThisRound)
+                return;
+
+            // 2. Mod 被禁用 → 强制恢复并重置等待状态
             if (!Plugin.Enabled)
             {
                 if (_triggered)
@@ -33,10 +41,11 @@ namespace SLMenuTrigger
                     _triggered = false;
                     Plugin.Log.LogInfo("Mod disabled. Game resumed.");
                 }
+                _waitingForPlayerScore = false;
                 return;
             }
 
-            // 2. 如果已触发暂停，监听恢复条件
+            // 3. 如果已触发暂停，监听恢复条件
             if (_triggered)
             {
                 if (Time.timeScale == 1f)
@@ -48,40 +57,87 @@ namespace SLMenuTrigger
                 return;
             }
 
-            // 3. 如果游戏处于暂停状态（非我们引起的），不检测
+            // 4. 如果游戏处于暂停状态（非我们引起的），不检测
             if (Time.timeScale == 0f) return;
 
-            // 4. 冷却时间
+            // 5. 冷却时间
             if (Time.unscaledTime < _resumeCooldown) return;
 
-            // 5. 正常检测
-            CheckDeckAndTrigger();
-        }
+            // 6. 如果正在等待玩家总分更新
+            if (_waitingForPlayerScore)
+            {
+                CheckScoresDuringWait();
+                return;
+            }
 
-        private void CheckDeckAndTrigger()
-        {
+            // 7. 正常检测：检测牌堆是否耗尽
             int deckCount = GetDeckCount();
-            if (deckCount != 0) return;
-
-            // 牌堆耗尽，读取双方分数
-            int playerScore = GetCachedScore(ref _playerTextCache, _playerPath);
-            int aiScore = GetCachedScore(ref _aiTextCache, _aiPath);
-
-            if (playerScore <= 0 || aiScore <= 0) return;
-            if (playerScore == 1234567 || aiScore == 1234567) return;
-
-            if (playerScore < aiScore)
+            if (deckCount == 0)
             {
-                Plugin.Log.LogInfo($"牌堆耗尽! Player {playerScore} < Boss {aiScore}. Pausing.");
-                _triggered = true;
-                Time.timeScale = 0f;
-            }
-            else
-            {
-                Plugin.Log.LogInfo($"牌堆耗尽，但玩家 {playerScore} >= Boss {aiScore}，不触发暂停。");
+                _waitingForPlayerScore = true;
+                _waitStartTime = Time.unscaledTime;
+                Plugin.Log.LogInfo("牌堆耗尽，等待总分更新...");
+                return;
             }
         }
 
+        // ========== 等待过程中检查总分 ==========
+        private void CheckScoresDuringWait()
+        {
+            // 每次强制重新查找，不依赖缓存
+            int playerScore = GetScoreDirect(_playerPath);
+            int aiScore = GetScoreDirect(_aiPath);
+
+            // 如果两者都不是占位符（1234567），说明 UI 已更新
+            bool playerValid = (playerScore != 1234567);
+            bool aiValid = (aiScore != 1234567);
+
+            // 超时则强制使用当前值（即使为 0）
+            bool timeout = (Time.unscaledTime - _waitStartTime > WAIT_TIMEOUT);
+
+            if ((playerValid && aiValid) || timeout)
+            {
+                _waitingForPlayerScore = false;
+
+                // 如果超时且仍然为占位符，则将其视为 0（但实际上不会，因为占位符一般很快消失）
+                if (playerScore == 1234567) playerScore = 0;
+                if (aiScore == 1234567) aiScore = 0;
+
+                if (playerScore < aiScore)
+                {
+                    Plugin.Log.LogInfo($"牌堆耗尽! Player {playerScore} < Boss {aiScore}. Pausing.");
+                    _triggered = true;
+                    Time.timeScale = 0f;
+                    _hasTriggeredThisRound = true;   // 标记本局已触发
+                }
+                else
+                {
+                    Plugin.Log.LogInfo($"牌堆耗尽，但玩家 {playerScore} >= Boss {aiScore}，不触发暂停。");
+                    // 注意：这里未触发暂停，不设置 _hasTriggeredThisRound，因此后续牌堆再次耗尽仍会检测
+                }
+            }
+        }
+
+        // ========== 直接读取分数（强制刷新） ==========
+        private int GetScoreDirect(string path)
+        {
+            var texts = FindObjectsOfType<TMP_Text>(true);
+            foreach (var t in texts)
+            {
+                if (t != null && GetPath(t.transform) == path)
+                {
+                    string clean = CleanNumber(t.m_text);
+                    if (int.TryParse(clean, System.Globalization.NumberStyles.Integer,
+                        System.Globalization.CultureInfo.InvariantCulture, out int val))
+                    {
+                        return val;
+                    }
+                }
+            }
+            return -1;
+        }
+
+        // ========== 读取牌堆剩余数量（带缓存） ==========
         private int GetDeckCount()
         {
             // 检查缓存是否有效，如果无效则重新查找
@@ -102,27 +158,7 @@ namespace SLMenuTrigger
             return -1;
         }
 
-        private int GetCachedScore(ref TMP_Text cache, string targetPath)
-        {
-            // 检查缓存是否有效，如果无效则重新查找
-            if (cache == null || !cache.gameObject.activeInHierarchy)
-            {
-                cache = FindTextByPath(targetPath);
-            }
-
-            if (cache != null && !string.IsNullOrEmpty(cache.m_text))
-            {
-                string clean = CleanNumber(cache.m_text);
-                if (int.TryParse(clean, System.Globalization.NumberStyles.Integer,
-                    System.Globalization.CultureInfo.InvariantCulture, out int val))
-                {
-                    return val;
-                }
-            }
-            return -1;
-        }
-
-        // 通用方法：根据路径查找 TMP_Text（不缓存）
+        // ========== 根据路径查找 TMP_Text ==========
         private TMP_Text FindTextByPath(string path)
         {
             var texts = FindObjectsOfType<TMP_Text>(true);
@@ -136,6 +172,7 @@ namespace SLMenuTrigger
             return null;
         }
 
+        // ========== 获取 UI 路径 ==========
         private string GetPath(Transform t)
         {
             var names = new List<string>();
@@ -148,6 +185,7 @@ namespace SLMenuTrigger
             return string.Join("/", names);
         }
 
+        // ========== 清理数字字符串 ==========
         private string CleanNumber(string input)
         {
             if (string.IsNullOrEmpty(input)) return "";
@@ -163,7 +201,7 @@ namespace SLMenuTrigger
             return sb.ToString().Replace(",", "");
         }
 
-        // ========== 大号提示框 ==========
+        // ========== 暂停提示界面 ==========
         private void OnGUI()
         {
             if (!_triggered) return;

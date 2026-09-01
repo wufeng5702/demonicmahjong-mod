@@ -317,11 +317,7 @@ function Default-Cfg([string]$proj) {
         "SLMenuTrigger" {
             return "# SLMenuTrigger — 低于 Boss 时自动打开菜单让玩家手动 SL（改后重启生效）`r`n" +
             "`r`n" +
-            "enabled: true`r`n" +
-            "trigger_delay: 1.5`r`n" +
-            "use_escape: true`r`n" +
-            "use_menu_button: true`r`n" +
-            "debug_log: true`r`n"
+            "enabled: true`r`n"
         }
         default { return $null }
     }

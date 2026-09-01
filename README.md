@@ -7,13 +7,14 @@
 
 | Mod | 功能                     | 说明 |
 | --- |------------------------| --- |
-| **ScorePreview** | 对局左上角实时两行**分数预览**      | `计分: 底分 x 番数 x 倍率 = 预计分`；领取计分按钮 / 听牌面板 / 结算面板的实时数据 |
+| **ScorePreview** | 对局左上角实时多行**分数预览**      | `计分: 底分 x 番数 x 倍率 = 预计分`；领取计分按钮 / 听牌面板 / 结算面板的实时数据 |
 | **AutoContinue** | 自动跳过「等玩家点一下」的环节        | 自动点公告【继续】进入大厅、自动点 Boss 战【点击继续】进入对局 |
 | **SLMenuTrigger** | 对局结算前分数低于 Boss 时自动暂停游戏 | 给予玩家手动执行 SL 的时间；默认开启，可通过同目录 `SLMenuTrigger.yml` 关闭 |
 
 各自的详细文档见：
 - [ScorePreview/README.md](ScorePreview/README.md)
 - [AutoContinue/README.md](AutoContinue/README.md)
+- [SLMenuTrigger/README.md](SLMenuTrigger/README.md)
 
 ## 快速开始（一键安装 / 卸载）
 1. **下载**  
