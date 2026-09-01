@@ -19,7 +19,7 @@
    下载最新版代码： [**`source.zip`**](https://github.com/wufeng5702/demonicmahjong-mod/releases/latest/download/source.zip)。
 
 2. **解压**  
-   将下载的 `.zip` 文件解压到**任意文件夹**（建议路径不含中文和空格，例如 `D:\DemonicMahjongMods`）。
+   将下载的 `source.zip` 文件解压到**任意文件夹**（建议路径不含中文和空格，例如 `D:\DemonicMahjongMods`）。
 
 3. **运行**  
    进入解压后的文件夹，**双击** `install_mods.bat`。  
@@ -27,10 +27,6 @@
    - 脚本会显示菜单，输入要安装的 Mod 编号（多个用逗号隔开，例如 `1,2`），按回车即可。  
    - 全程自动化：自动识别游戏目录 → 自动补装 BepInEx → 自动编译并安装选中的 Mod。  
    - 如果电脑没有 `.NET SDK`，脚本会提示，请先安装 [.NET 6.0 SDK](https://dotnet.microsoft.com/download/dotnet/6.0) 后再重试。
-
-> ✅ 首次安装 BepInEx 后，请**先启动一次游戏再退出**，让游戏生成 `BepInEx\interop\` 文件夹，之后脚本才能正常编译 Mod。
-
-
 
 运行后脚本会：
 
