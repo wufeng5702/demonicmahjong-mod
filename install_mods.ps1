@@ -42,7 +42,8 @@ elseif ($Mods -eq "" -and $GameDir -ne "") {
 # 仓库存档：id / 项目目录 / dll 名 / 说明
 $catalog = @(
     [pscustomobject]@{ Id = 1; Project = "ScorePreview"; Dll = "ScorePreview.dll"; Cfg = "ScorePreview.yml"; Desc = "分数预览（计分/和牌两行 HUD）" },
-    [pscustomobject]@{ Id = 2; Project = "AutoContinue"; Dll = "AutoContinue.dll"; Cfg = "AutoContinue.yml"; Desc = "自动跳过公告【继续】与对局【点击继续】" }
+    [pscustomobject]@{ Id = 2; Project = "AutoContinue"; Dll = "AutoContinue.dll"; Cfg = "AutoContinue.yml"; Desc = "自动跳过公告【继续】与对局【点击继续】" },
+    [pscustomobject]@{ Id = 3; Project = "SLMenuTrigger"; Dll = "SLMenuTrigger.dll"; Cfg = "SLMenuTrigger.yml"; Desc = "低于 Boss 时自动暂停游戏让玩家手动 SL" }
 )
 
 Write-Host "== DemonicMahjong Mod 安装器 ==" -ForegroundColor Cyan
@@ -301,7 +302,7 @@ function Default-Cfg([string]$proj) {
             "`r`n" +
             "# 2. 与 Boss 对决加载完成后底部【点击继续】：自动点击进入对局`r`n" +
             "battle_enabled: true`r`n" +
-            "battle_delay: 1.0`r`n"+
+            "battle_delay: 1.0`r`n" +
             "`r`n" +
             "# 3. 对局结算后的结算/查看详情界面：自动点击【继续】（默认关闭）`r`n" +
             "result_enabled: false`r`n" +
@@ -312,6 +313,15 @@ function Default-Cfg([string]$proj) {
             "`r`n" +
             "# HUD 距顶部的下移量 = 屏幕高度 × 该比例（1.0=满屏高），换分辨率不变形`r`n" +
             "yoffset: 0.1`r`n" 
+        }
+        "SLMenuTrigger" {
+            return "# SLMenuTrigger — 低于 Boss 时自动打开菜单让玩家手动 SL（改后重启生效）`r`n" +
+            "`r`n" +
+            "enabled: true`r`n" +
+            "trigger_delay: 1.5`r`n" +
+            "use_escape: true`r`n" +
+            "use_menu_button: true`r`n" +
+            "debug_log: true`r`n"
         }
         default { return $null }
     }

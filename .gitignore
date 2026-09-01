@@ -5,3 +5,7 @@ tools/dumptypes/libs/
 
 # 无意义的备份压缩包
 backup.zip
+
+# IDE
+.idea/
+.vscode/
