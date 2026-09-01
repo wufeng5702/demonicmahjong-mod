@@ -1,0 +1,32 @@
+name: Create Release
+
+on:
+    push:
+        tags:
+            - "v*" # 当推送如 v1.0.0 的标签时触发
+
+jobs:
+    build:
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v7
+
+            - name: Create Source Zip
+              run: |
+                  # 将需要打包的文件和文件夹列在这里
+                  zip -r ${{ github.ref_name }}-source.zip . -x "*.git*" "bin/*" "obj/*"
+              # 如需打包 tar.gz，可使用: tar -czf ${{ github.ref_name }}-source.tar.gz --exclude='.git' --exclude='bin' --exclude='obj' .
+
+            - name: Generate SHA-256 Checksum
+              run: |
+                  sha256sum ${{ github.ref_name }}-source.zip > ${{ github.ref_name }}-source.zip.sha256
+
+            - name: Create Release and Upload Assets
+              uses: softprops/action-gh-release@v3
+              with:
+                  files: |
+                      ${{ github.ref_name }}-source.zip
+                      ${{ github.ref_name }}-source.zip.sha256
+              env:
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
