@@ -5,6 +5,10 @@ on:
         tags:
             - "v*" # 当推送如 v1.0.0 的标签时触发
 
+# 授予当前 workflow 创建 Release 和上传附件的写入权限
+permissions:
+    contents: write
+
 jobs:
     build:
         runs-on: ubuntu-latest
