@@ -301,7 +301,11 @@ function Default-Cfg([string]$proj) {
             "`r`n" +
             "# 2. 与 Boss 对决加载完成后底部【点击继续】：自动点击进入对局`r`n" +
             "battle_enabled: true`r`n" +
-            "battle_delay: 1.0`r`n"
+            "battle_delay: 1.0`r`n"+
+            "`r`n" +
+            "# 3. 对局结算后的结算/查看详情界面：自动点击【继续】（默认关闭）`r`n" +
+            "result_enabled: false`r`n" +
+            "result_delay: 5.0`r`n"
         }
         "ScorePreview" { 
             return "# ScorePreview — 分数预览`r`n" +
