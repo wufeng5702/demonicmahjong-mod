@@ -16,10 +16,10 @@
 
 ## 快速开始（一键安装 / 卸载）
 1. **下载**  
-   下载最新版代码： [**`source.zip`**](https://github.com/wufeng5702/demonicmahjong-mod/releases/latest/download/source.zip)。
+   下载最新版代码： [**`DemonicMahjongMod.zip`**](https://github.com/wufeng5702/demonicmahjong-mod/releases/latest/download/DemonicMahjongMod.zip)。
 
 2. **解压**  
-   将下载的 `source.zip` 文件解压到**任意文件夹**（建议路径不含中文和空格，例如 `D:\DemonicMahjongMods`）。
+   将下载的 `DemonicMahjongMod.zip` 文件解压到**任意文件夹**（建议路径不含中文和空格，例如 `D:\`）。
 
 3. **运行**  
    进入解压后的文件夹，**双击** `install_mods.bat`。  

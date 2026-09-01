@@ -19,17 +19,17 @@ jobs:
               uses: actions/checkout@v7
 
             - name: Create Source Zip
-              run: zip -r source.zip . -x "*.git*" "bin/*" "obj/*"
+              run: zip -r DemonicMahjongMod.zip . -x "*.git*" "bin/*" "obj/*"
 
             - name: Generate SHA-256 Checksum
-              run: sha256sum source.zip > source.zip.sha256
+              run: sha256sum DemonicMahjongMod.zip > DemonicMahjongMod.zip.sha256
 
             - name: Create Release and Upload Assets
               uses: softprops/action-gh-release@v3
               with:
                   files: |
-                      source.zip
-                      source.zip.sha256
+                      DemonicMahjongMod.zip
+                      DemonicMahjongMod.zip.sha256
               env:
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
