@@ -18,7 +18,8 @@ namespace SLMenuTrigger
         // ========== 状态字段 ==========
         private bool _triggered = false;
         private float _resumeCooldown = 0f;
-        private bool _hasTriggeredThisRound = false;   // 新增：本局是否已触发过暂停
+        private bool _hasTriggeredThisRound = false;   // 本局是否已触发暂停
+        private bool _deckWasZero = false;             // 上一帧牌堆是否为 0，用于检测新对局
 
         // 等待玩家总分更新
         private bool _waitingForPlayerScore = false;
@@ -28,6 +29,20 @@ namespace SLMenuTrigger
         // ========== Unity 生命周期 ==========
         private void Update()
         {
+            // ---- 新对局检测：牌堆从 0 变为正数时重置“本局已触发”标志 ----
+            int deckCount = GetDeckCount();
+            if (deckCount > 0 && _deckWasZero)
+            {
+                _hasTriggeredThisRound = false;
+                _deckWasZero = false;
+                Plugin.Log.LogInfo("检测到新对局开始，重置触发标志。");
+            }
+            else if (deckCount == 0)
+            {
+                _deckWasZero = true;
+            }
+            // deckCount == -1 表示未找到 UI，忽略
+
             // 1. Mod 被禁用 → 强制恢复并重置等待状态（最高优先级）
             if (!Plugin.Enabled)
             {
@@ -72,8 +87,7 @@ namespace SLMenuTrigger
             }
 
             // 7. 正常检测：检测牌堆是否耗尽
-            int deckCount = GetDeckCount();
-            if (deckCount == 0)
+            if (deckCount == 0)   // 复用上面获取的 deckCount
             {
                 _waitingForPlayerScore = true;
                 _waitStartTime = Time.unscaledTime;
