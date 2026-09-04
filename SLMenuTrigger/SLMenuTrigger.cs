@@ -100,8 +100,8 @@ namespace SLMenuTrigger
         private void CheckScoresDuringWait()
         {
             // 每次强制重新查找，不依赖缓存
-            int playerScore = GetScoreDirect(_playerPath);
-            int aiScore = GetScoreDirect(_aiPath);
+            long playerScore = GetScoreDirect(_playerPath);
+            long aiScore = GetScoreDirect(_aiPath);
 
             // 如果两者都不是占位符（1234567），说明 UI 已更新
             bool playerValid = (playerScore != 1234567);
@@ -118,7 +118,12 @@ namespace SLMenuTrigger
                 if (playerScore == 1234567) playerScore = 0;
                 if (aiScore == 1234567) aiScore = 0;
 
-                if (playerScore < aiScore)
+                // 如果任一分数为 -1（UI 未找到），视为无效，不触发暂停
+                if (playerScore < 0 || aiScore < 0)
+                {
+                    Plugin.Log.LogInfo($"牌堆耗尽，但分数读取异常 Player {playerScore} / Boss {aiScore}，跳过本次检测。");
+                }
+                else if (playerScore < aiScore)
                 {
                     Plugin.Log.LogInfo($"牌堆耗尽! Player {playerScore} < Boss {aiScore}. Pausing.");
                     _triggered = true;
@@ -136,7 +141,7 @@ namespace SLMenuTrigger
         }
 
         // ========== 直接读取分数（强制刷新） ==========
-        private int GetScoreDirect(string path)
+        private long GetScoreDirect(string path)
         {
             var texts = FindObjectsOfType<TMP_Text>(true);
             foreach (var t in texts)
@@ -144,8 +149,8 @@ namespace SLMenuTrigger
                 if (t != null && GetPath(t.transform) == path)
                 {
                     string clean = CleanNumber(t.m_text);
-                    if (int.TryParse(clean, System.Globalization.NumberStyles.Integer,
-                        System.Globalization.CultureInfo.InvariantCulture, out int val))
+                    if (long.TryParse(clean, System.Globalization.NumberStyles.Integer,
+                        System.Globalization.CultureInfo.InvariantCulture, out long val))
                     {
                         return val;
                     }
