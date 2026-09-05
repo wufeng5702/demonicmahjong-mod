@@ -626,6 +626,7 @@ namespace ScorePreview
                 }
                 else
                 {
+                    TingSnap.Has = false;
                     TingSnap.LastErr = fail;
                     if (ScoreHud.Log != null)
                         ScoreHud.Log.LogInfo("ting hook -> none: " + fail);

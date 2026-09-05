@@ -31,6 +31,7 @@ namespace ScorePreview
         private float _nextPanelSearch;
         private string _liveBase = "";
         private int _yOffset;
+        private int _lastRoundNum = -1;
 
         private void Awake()
         {
@@ -167,8 +168,45 @@ namespace ScorePreview
             return false;
         }
 
+        /// <summary>读 RoundNumText 检测新对局：当它从正数变为 0 时，清除跨局残留的预测快照。</summary>
+        private void DetectRoundChange()
+        {
+            try
+            {
+                var texts = UnityEngine.Object.FindObjectsOfType<TMPro.TMP_Text>();
+                for (int i = 0; i < texts.Length; i++)
+                {
+                    var t = texts[i];
+                    if (t == null || t.m_text == null) continue;
+                    if (t.gameObject.name != "RoundNumText") continue;
+                    string s = t.m_text.Trim();
+                    if (int.TryParse(s, out int rn))
+                    {
+                        if (rn == 0 && _lastRoundNum > 0)
+                        {
+                            // 新对局开始，清除上一局的残留数据
+                            TingSnap.Has = false;
+                            TingSnap.Cur = default;
+                            TingSnap.LastErr = null;
+                            LastSettleFactors = null;
+                            _hand = null;
+                            _panel = null;
+                            _settleVisible = false;
+                            _settleWatchUntil = 0f;
+                            Log?.LogInfo("ScorePreview: 新对局检测，重置预测快照。");
+                        }
+                        _lastRoundNum = rn;
+                    }
+                    return; // 找到第一个 RoundNumText 即可
+                }
+            }
+            catch (Exception) { }
+        }
+
         private void Refresh()
         {
+            DetectRoundChange();
+
             // 诊断：结算签名出现后的 14s 内高频重dump，等数字/动画稳定。
             ScanTexts();
             if (Time.unscaledTime < _settleWatchUntil && Time.unscaledTime >= _nextSettleDump)
