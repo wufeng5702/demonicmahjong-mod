@@ -253,9 +253,9 @@ namespace ScorePreview
                 }
             }
             else if (hasMul && TryFanNumMin(out int uiFan))
-                huLines[0] = "和牌1: " + MakeEst(PredictedBase(), (decimal)(long)uiFan, mul);
+                huLines[0] = "和牌1: " + MakeEst(BaseOrLive(), (decimal)(long)uiFan, mul);
             else if (TingSnap.Has && TingSnap.Cur.MinFan > 0)
-                huLines[0] = "和牌1: " + MakeEst(PredictedBase(), TingSnap.Cur.MinFan, TingSnap.Cur.Mul);
+                huLines[0] = "和牌1: " + MakeEst(BaseOrLive(), TingSnap.Cur.MinFan, TingSnap.Cur.Mul);
             else
             {
                 var prs = PlayerRoundStatistics.Instance;
@@ -272,7 +272,7 @@ namespace ScorePreview
                                     + MakeEst(items[i].BaseScore > 0 ? Fmt(items[i].BaseScore) : LiveBase(),
                                         items[i].MinFan, items[i].Mul);
                         else
-                            huLines[0] = "和牌1: " + MakeEst(PredictedBase(), q.Value.MinFan, q.Value.Mul);
+                            huLines[0] = "和牌1: " + MakeEst(BaseOrLive(), q.Value.MinFan, q.Value.Mul);
                     }
                 }
             }
@@ -520,6 +520,13 @@ namespace ScorePreview
             if (TingSnap.Has && TingSnap.Cur.BaseScore > 0m)
                 return Fmt(TingSnap.Cur.BaseScore);
             return "";
+        }
+
+        /// <summary>底分来源：优先 ting hook 缓存，兜底实时 UI。</summary>
+        private string BaseOrLive()
+        {
+            string p = PredictedBase();
+            return p.Length > 0 ? p : LiveBase();
         }
 
         private static bool IsAllNums(string s)
