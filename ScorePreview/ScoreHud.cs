@@ -29,7 +29,6 @@ namespace ScorePreview
         private PlayerHuPanel _panel;
         private float _nextPoll;
         private float _nextPanelSearch;
-        private string _liveBase = "";
         private int _yOffset;
         private int _lastRoundNum = -1;
 
@@ -660,9 +659,8 @@ namespace ScorePreview
                     _nextScan = Time.unscaledTime + 2f;
                     _settleWatchUntil = Time.unscaledTime + 14f;
                     _settleVisible = true;
-                    // 结算开始，清除 ting hook 缓存，避免 LiveMul() 归零时兜底显示旧倍率
-                    TingSnap.Has = false;
-                    TingSnap.Cur = default;
+                    // 结算开始，清除 Mul 防止 LiveMul() 归零后兜底显示旧倍率；保留 TopScores 避免遗物番数丢失
+                    TingSnap.Cur = new Prediction { TopScores = TingSnap.Cur.TopScores };
                     return;
                 }
 
