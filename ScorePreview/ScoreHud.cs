@@ -653,6 +653,9 @@ namespace ScorePreview
                     _nextScan = Time.unscaledTime + 2f;
                     _settleWatchUntil = Time.unscaledTime + 14f;
                     _settleVisible = true;
+                    // 结算开始，清除 ting hook 缓存，避免 LiveMul() 归零时兜底显示旧倍率
+                    TingSnap.Has = false;
+                    TingSnap.Cur = default;
                     return;
                 }
 
