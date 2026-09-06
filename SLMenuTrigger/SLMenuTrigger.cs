@@ -28,6 +28,11 @@ namespace SLMenuTrigger
         private float _waitStartTime;
         private const float WAIT_TIMEOUT = 0.5f; // 等待 0.5 秒，UI 更新足够
 
+        // 监控日志去重
+        private long _lastLogPlayerScore;
+        private long _lastLogAiScore;
+        private int _lastLogBossDeck;
+
         // ========== Unity 生命周期 ==========
         private void Update()
         {
@@ -94,6 +99,7 @@ namespace SLMenuTrigger
             {
                 _waitingForPlayerScore = true;
                 _waitStartTime = Time.unscaledTime;
+                _lastLogPlayerScore = long.MinValue; // 强制首次输出日志
                 Plugin.Log.LogInfo("牌堆耗尽，等待总分更新...");
                 return;
             }
@@ -148,7 +154,14 @@ namespace SLMenuTrigger
                     else
                     {
                         // Boss 仍有摸牌机会，可能和牌逆转，继续监控
-                        Plugin.Log.LogInfo($"玩家 {playerScore} >= Boss {aiScore}，但 Boss 仍有 {bossDeck} 次摸牌，继续监控...");
+                        // 仅在分数或牌堆数变化时输出日志，避免刷屏
+                        if (playerScore != _lastLogPlayerScore || aiScore != _lastLogAiScore || bossDeck != _lastLogBossDeck)
+                        {
+                            Plugin.Log.LogInfo($"玩家 {playerScore} >= Boss {aiScore}，但 Boss 仍有 {bossDeck} 次摸牌，继续监控...");
+                            _lastLogPlayerScore = playerScore;
+                            _lastLogAiScore = aiScore;
+                            _lastLogBossDeck = bossDeck;
+                        }
                         // 保持 _waitingForPlayerScore = true，下一帧继续检查
                     }
                 }
