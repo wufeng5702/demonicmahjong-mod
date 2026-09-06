@@ -496,7 +496,7 @@ namespace ScorePreview
 
         private static string F(decimal value)
         {
-            return value.ToString(CultureInfo.InvariantCulture);
+            return value.ToString("0.##", CultureInfo.InvariantCulture);
         }
 
         private static string First(string s)
