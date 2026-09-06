@@ -11,9 +11,11 @@ namespace SLMenuTrigger
         private readonly string _playerPath = "Canvas/ScoreBar/PlayerScore/Number";
         private readonly string _aiPath = "Canvas/ScoreBar/AIScore/Number";
         private readonly string _deckPath = "Canvas/RoundStatistics/PaiLeftCountPanel/PlayerSwapPaiLeftCountText";
+        private readonly string _bossDeckPath = "Canvas/RoundStatistics/PaiLeftCountPanel/BossSwapPaiLeftCountText";
 
         // ========== 缓存字段 ==========
         private TMP_Text _deckTextCache;
+        private TMP_Text _bossDeckTextCache;
 
         // ========== 状态字段 ==========
         private bool _triggered = false;
@@ -34,6 +36,7 @@ namespace SLMenuTrigger
             if (deckCount > 0 && _deckWasZero)
             {
                 _hasTriggeredThisRound = false;
+                _waitingForPlayerScore = false;
                 _deckWasZero = false;
                 Plugin.Log.LogInfo("检测到新对局开始，重置触发标志。");
             }
@@ -112,8 +115,6 @@ namespace SLMenuTrigger
 
             if ((playerValid && aiValid) || timeout)
             {
-                _waitingForPlayerScore = false;
-
                 // 如果超时且仍然为占位符，则将其视为 0（但实际上不会，因为占位符一般很快消失）
                 if (playerScore == 1234567) playerScore = 0;
                 if (aiScore == 1234567) aiScore = 0;
@@ -122,20 +123,35 @@ namespace SLMenuTrigger
                 if (playerScore < 0 || aiScore < 0)
                 {
                     Plugin.Log.LogInfo($"牌堆耗尽，但分数读取异常 Player {playerScore} / Boss {aiScore}，跳过本次检测。");
+                    _waitingForPlayerScore = false;
+                    _hasTriggeredThisRound = true;
                 }
                 else if (playerScore < aiScore)
                 {
                     Plugin.Log.LogInfo($"牌堆耗尽! Player {playerScore} < Boss {aiScore}. Pausing.");
                     _triggered = true;
                     Time.timeScale = 0f;
+                    _waitingForPlayerScore = false;
+                    _hasTriggeredThisRound = true;
                 }
                 else
                 {
-                    Plugin.Log.LogInfo($"牌堆耗尽，但玩家 {playerScore} >= Boss {aiScore}，不触发暂停。");
+                    // 玩家分数 >= Boss，但 Boss 可能还有摸牌机会，继续监控
+                    int bossDeck = GetBossDeckCount();
+                    if (bossDeck == 0 || bossDeck < 0)
+                    {
+                        // Boss 也无牌可摸，安全
+                        Plugin.Log.LogInfo($"牌堆耗尽，但玩家 {playerScore} >= Boss {aiScore}，不触发暂停。");
+                        _waitingForPlayerScore = false;
+                        _hasTriggeredThisRound = true;
+                    }
+                    else
+                    {
+                        // Boss 仍有摸牌机会，可能和牌逆转，继续监控
+                        Plugin.Log.LogInfo($"玩家 {playerScore} >= Boss {aiScore}，但 Boss 仍有 {bossDeck} 次摸牌，继续监控...");
+                        // 保持 _waitingForPlayerScore = true，下一帧继续检查
+                    }
                 }
-
-                // 无论是否触发暂停，都标记本局已处理过牌堆耗尽，不再重复检测
-                _hasTriggeredThisRound = true;
             }
             // 若未满足条件（有效且未超时），则继续等待，不做任何操作
         }
@@ -171,6 +187,26 @@ namespace SLMenuTrigger
             if (_deckTextCache != null && !string.IsNullOrEmpty(_deckTextCache.m_text))
             {
                 string clean = CleanNumber(_deckTextCache.m_text);
+                if (int.TryParse(clean, System.Globalization.NumberStyles.Integer,
+                    System.Globalization.CultureInfo.InvariantCulture, out int val))
+                {
+                    return val;
+                }
+            }
+            return -1;
+        }
+
+        // ========== 读取 Boss 牌堆剩余数量（带缓存） ==========
+        private int GetBossDeckCount()
+        {
+            if (_bossDeckTextCache == null || !_bossDeckTextCache.gameObject.activeInHierarchy)
+            {
+                _bossDeckTextCache = FindTextByPath(_bossDeckPath);
+            }
+
+            if (_bossDeckTextCache != null && !string.IsNullOrEmpty(_bossDeckTextCache.m_text))
+            {
+                string clean = CleanNumber(_bossDeckTextCache.m_text);
                 if (int.TryParse(clean, System.Globalization.NumberStyles.Integer,
                     System.Globalization.CultureInfo.InvariantCulture, out int val))
                 {
