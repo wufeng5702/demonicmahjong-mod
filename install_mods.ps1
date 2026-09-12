@@ -407,9 +407,9 @@ function Uninstall-Mod($mod, [string]$game, [bool]$removeBepinex) {
 if ($Uninstall) {
     $sel = @()
     if ($Mods -ne "") { $sel = Parse-Mods $Mods } else { $sel = Ask-Mods }
-    if ($sel.Count -eq 0) { Write-Host "未选择任何 mod，退出。" -ForegroundColor DarkGray; exit 0 }
+    if ($sel.Count -eq 0) { Write-Host "未选择任何 mod，退出。" -ForegroundColor DarkGray; Read-Host "按回车退出"; exit 0 }
     $game = Resolve-GameDir
-    if (-not $game) { Write-Host "未确定游戏目录，退出。" -ForegroundColor Red; exit 1 }
+    if (-not $game) { Write-Host "未确定游戏目录，退出。" -ForegroundColor Red; Read-Host "按回车退出"; exit 1 }
     foreach ($m in $sel) { Uninstall-Mod $m $game $RemoveBepInEx }
     if ($RemoveBepInEx) {
         $confirm = Read-Host "确认删除整个 BepInEx 框架与前置(winhttp/doorstop/dotnet)? [y/N]"
@@ -422,6 +422,7 @@ if ($Uninstall) {
         }
     }
     Write-Host "卸载完成。" -ForegroundColor Green
+    Read-Host "按回车退出"
     exit 0
 }
 
@@ -430,16 +431,18 @@ $sel = @()
 if ($Mods -ne "") { $sel = Parse-Mods $Mods } else { $sel = Ask-Mods }
 if ($sel.Count -eq 0) {
     Write-Host "未选择任何 mod，跳过依赖安装并退出。" -ForegroundColor DarkGray
+    Read-Host "按回车退出"
     exit 0
 }
 Write-Host ("已选择: " + (($sel.Project) -join ", ")) -ForegroundColor Cyan
 
 $game = Resolve-GameDir
-if (-not $game) { Write-Host "未确定游戏目录，退出。" -ForegroundColor Red; exit 1 }
+if (-not $game) { Write-Host "未确定游戏目录，退出。" -ForegroundColor Red; Read-Host "按回车退出"; exit 1 }
 
 if (-not $SkipBepInEx) {
     if (-not (Install-BepInEx $game)) {
         Write-Host "BepInEx 依赖安装失败，中止。可用 -SkipBepInEx 跳过。" -ForegroundColor Red
+        Read-Host "按回车退出"
         exit 1
     }
 }
@@ -463,3 +466,10 @@ $fail = @()
 foreach ($m in $sel) {
     try { Publish-Mod $m $game } catch { Write-Host "[mod] 失败: $($_.Exception.Message)" -ForegroundColor Red; $fail += $m.Project }
 }
+
+if ($fail.Count -gt 0) {
+    Write-Host ("安装完成，但以下 mod 编译失败: " + ($fail -join ", ")) -ForegroundColor Yellow
+} else {
+    Write-Host "全部安装完成。" -ForegroundColor Green
+}
+Read-Host "按回车退出"
