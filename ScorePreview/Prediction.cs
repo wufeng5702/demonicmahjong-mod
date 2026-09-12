@@ -8,6 +8,7 @@ using MaJiang.DataConstruct.MaJiang;
 using MaJiang.PlayMaJiang;
 using MaJiang.PlayMaJiang.Buff.BuffPayloads;
 using MaJiang.PlayMaJiang.Player;
+using Shared;
 using MaJiang.PlayMaJiang.RoundStatistics;
 using UnityEngine;
 using II = Il2CppSystem.Collections.Generic;
@@ -276,7 +277,6 @@ namespace ScorePreview
 
         internal static void Diag(string msg)
         {
-            ScoreHud.Log?.LogInfo("Diag: " + msg);
         }
 
         private static long FanSum(PlayerRoundStatistics prs, Il2CppSystem.Collections.Generic.List<FanZhong> inner)
@@ -321,8 +321,6 @@ namespace ScorePreview
             sb.Append("]");
             return sb.ToString();
         }
-
-        private static string Hex(int v) => "0x" + v.ToString("X8");
 
         private static void DumpTuple(object t, int fans, decimal f, decimal m)
         {
@@ -488,24 +486,16 @@ namespace ScorePreview
             if (_dRoute != route)
             {
                 _dRoute = route;
-                ScoreHud.Log?.LogInfo("Decimal route: " + route
-                    + " (raw flags=" + d.flags + " hi=" + d.hi + " lo=" + d.lo + " mid=" + d.mid
-                    + ") tostr='" + d.ToString() + "'");
             }
         }
 
-        private static string F(decimal value)
-        {
-            return value.ToString("0.##", CultureInfo.InvariantCulture);
-        }
+        private static string F(decimal value) => NumberParser.Fmt(value);
 
-        private static string First(string s)
-        {
-            int i = s.IndexOf('\n');
-            return i < 0 ? s : s.Substring(0, i);
-        }
+        private static string First(string s) => StringTruncator.FirstLine(s);
 
-        private static string FirstLine(string s) => First(s);
+        private static string FirstLine(string s) => StringTruncator.FirstLine(s);
+
+        private static string Hex(int v) => "0x" + v.ToString("X8");
 
         private static void FillFromSet(HashSet<FanZhong> set, Il2CppSystem.Collections.Generic.List<FanZhong> inner)
         {

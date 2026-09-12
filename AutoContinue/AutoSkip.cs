@@ -2,9 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
-using System.Reflection;
 using UnityEngine;
 using UnityEngine.UI;
+using Shared;
 
 namespace AutoContinue
 {
@@ -115,7 +115,6 @@ namespace AutoContinue
                         // 使用统一的结算判定，如果是结算按钮则跳过（无论 result_enabled 是否开启）
                         if (IsSettlementButton(item.btn, buttonList))
                         {
-                            Log?.LogInfo("AutoContinue: Skipping Result button in Announce branch: " + item.btn.gameObject.name);
                             continue;
                         }
 
@@ -232,67 +231,40 @@ namespace AutoContinue
             }
         }
 
-        private static string FirstLine(string s)
-        {
-            if (string.IsNullOrEmpty(s)) return s;
-            int nl = s.IndexOf('\n');
-            return nl >= 0 ? s.Substring(0, nl) : s;
-        }
+        private static string FirstLine(string s) => StringTruncator.FirstLine(s);
 
         private void LoadConfig()
         {
             try
             {
-                var dir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
-                var f = Path.Combine(dir, CfgName);
-                if (!File.Exists(f))
+                var defaults = new Dictionary<string, string>
                 {
-                    File.WriteAllText(f, DefaultConfig(), System.Text.Encoding.UTF8);
-                    Log?.LogInfo("AutoContinue: created config " + f);
-                }
-                string[] lines = File.ReadAllLines(f);
-                for (int i = 0; i < lines.Length; i++)
-                {
-                    string t = lines[i].Trim();
-                    if (t.Length == 0 || t.StartsWith("#")) continue;
-                    int ci = t.IndexOf(':');
-                    if (ci < 0) continue;
-                    string k = t.Substring(0, ci).Trim();
-                    string v = t.Substring(ci + 1).Trim();
-                    if (string.Equals(k, "announce_enabled", StringComparison.OrdinalIgnoreCase))
-                        _announceEnabled = ParseBool(v, _announceEnabled);
-                    else if (string.Equals(k, "announce_delay", StringComparison.OrdinalIgnoreCase))
-                        _announceDelay = ParseFloat(v, _announceDelay);
-                    else if (string.Equals(k, "battle_enabled", StringComparison.OrdinalIgnoreCase))
-                        _battleEnabled = ParseBool(v, _battleEnabled);
-                    else if (string.Equals(k, "battle_delay", StringComparison.OrdinalIgnoreCase))
-                        _battleDelay = ParseFloat(v, _battleDelay);
-                    else if (string.Equals(k, "result_enabled", StringComparison.OrdinalIgnoreCase))
-                        _resultEnabled = ParseBool(v, _resultEnabled);
-                    else if (string.Equals(k, "result_delay", StringComparison.OrdinalIgnoreCase))
-                        _resultDelay = ParseFloat(v, _resultDelay);
-                }
+                    ["announce_enabled"] = "true",
+                    ["announce_delay"] = "2.0",
+                    ["battle_enabled"] = "true",
+                    ["battle_delay"] = "1.0",
+                    ["result_enabled"] = "false",
+                    ["result_delay"] = "5.0"
+                };
+                var cfg = YamlConfig.Load(CfgName, defaults);
+                if (cfg.TryGetValue("announce_enabled", out string ae))
+                    _announceEnabled = ParseBool(ae, _announceEnabled);
+                if (cfg.TryGetValue("announce_delay", out string ad))
+                    _announceDelay = ParseFloat(ad, _announceDelay);
+                if (cfg.TryGetValue("battle_enabled", out string be))
+                    _battleEnabled = ParseBool(be, _battleEnabled);
+                if (cfg.TryGetValue("battle_delay", out string bd))
+                    _battleDelay = ParseFloat(bd, _battleDelay);
+                if (cfg.TryGetValue("result_enabled", out string re))
+                    _resultEnabled = ParseBool(re, _resultEnabled);
+                if (cfg.TryGetValue("result_delay", out string rd))
+                    _resultDelay = ParseFloat(rd, _resultDelay);
             }
             catch (Exception e)
             {
                 Log?.LogInfo("AutoContinue: cfg read failed: " + FirstLine(e.ToString()));
             }
         }
-
-        private static string DefaultConfig() =>
-            "# AutoContinue — 自动跳过「等玩家点一下」的环节（改后重启游戏生效）\n" +
-            "\n" +
-            "# 1. 启动后的公告界面：自动点【继续】进入大厅\n" +
-            "announce_enabled: true\n" +
-            "announce_delay: 2.0\n" +
-            "\n" +
-            "# 2. 与 Boss 对决加载完成后底部【点击继续】：自动点击进入对局\n" +
-            "battle_enabled: true\n" +
-            "battle_delay: 1.0\n" +
-            "\n" +
-            "# 3. 对局结算后的结算/查看详情界面：自动点击【继续】（默认关闭）\n" +
-            "result_enabled: false\n" +
-            "result_delay: 5.0\n";
 
         private static bool ParseBool(string v, bool d)
         {

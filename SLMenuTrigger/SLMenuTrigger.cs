@@ -2,16 +2,18 @@ using System;
 using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
+using Shared;
 
 namespace SLMenuTrigger
 {
     public class MenuTriggerScript : MonoBehaviour
     {
         // ========== UI 路径常量 ==========
-        private readonly string _playerPath = "Canvas/ScoreBar/PlayerScore/Number";
-        private readonly string _aiPath = "Canvas/ScoreBar/AIScore/Number";
-        private readonly string _deckPath = "Canvas/RoundStatistics/PaiLeftCountPanel/PlayerSwapPaiLeftCountText";
-        private readonly string _bossDeckPath = "Canvas/RoundStatistics/PaiLeftCountPanel/BossSwapPaiLeftCountText";
+        private const string PlayerPath = "Canvas/ScoreBar/PlayerScore/Number";
+        private const string AiPath = "Canvas/ScoreBar/AIScore/Number";
+        private const string DeckPath = "Canvas/RoundStatistics/PaiLeftCountPanel/PlayerSwapPaiLeftCountText";
+        private const string BossDeckPath = "Canvas/RoundStatistics/PaiLeftCountPanel/BossSwapPaiLeftCountText";
+        private const long PlaceholderScore = 1234567;
 
         // ========== 缓存字段 ==========
         private TMP_Text _deckTextCache;
@@ -109,12 +111,12 @@ namespace SLMenuTrigger
         private void CheckScoresDuringWait()
         {
             // 每次强制重新查找，不依赖缓存
-            long playerScore = GetScoreDirect(_playerPath);
-            long aiScore = GetScoreDirect(_aiPath);
+            long playerScore = GetScoreDirect(PlayerPath);
+            long aiScore = GetScoreDirect(AiPath);
 
-            // 如果两者都不是占位符（1234567），说明 UI 已更新
-            bool playerValid = (playerScore != 1234567);
-            bool aiValid = (aiScore != 1234567);
+            // 如果两者都不是占位符，说明 UI 已更新
+            bool playerValid = (playerScore != PlaceholderScore);
+            bool aiValid = (aiScore != PlaceholderScore);
 
             // 超时则强制使用当前值（即使为 0）
             bool timeout = (Time.unscaledTime - _waitStartTime > WAIT_TIMEOUT);
@@ -122,8 +124,8 @@ namespace SLMenuTrigger
             if ((playerValid && aiValid) || timeout)
             {
                 // 如果超时且仍然为占位符，则将其视为 0（但实际上不会，因为占位符一般很快消失）
-                if (playerScore == 1234567) playerScore = 0;
-                if (aiScore == 1234567) aiScore = 0;
+                if (playerScore == PlaceholderScore) playerScore = 0;
+                if (aiScore == PlaceholderScore) aiScore = 0;
 
                 // 如果任一分数为 -1（UI 未找到），视为无效，不触发暂停
                 if (playerScore < 0 || aiScore < 0)
@@ -175,14 +177,17 @@ namespace SLMenuTrigger
             var texts = FindObjectsOfType<TMP_Text>(true);
             foreach (var t in texts)
             {
-                if (t != null && GetPath(t.transform) == path)
+                if (t == null) continue;
+                string tPath = GetPath(t.transform);
+                if (tPath == path)
                 {
-                    string clean = CleanNumber(t.m_text);
+                    string clean = CleanNumber(t.m_text).Replace(",", "");
                     if (long.TryParse(clean, System.Globalization.NumberStyles.Integer,
                         System.Globalization.CultureInfo.InvariantCulture, out long val))
                     {
                         return val;
                     }
+                    return -1;
                 }
             }
             return -1;
@@ -194,12 +199,12 @@ namespace SLMenuTrigger
             // 检查缓存是否有效，如果无效则重新查找
             if (_deckTextCache == null || !_deckTextCache.gameObject.activeInHierarchy)
             {
-                _deckTextCache = FindTextByPath(_deckPath);
+                _deckTextCache = FindTextByPath(DeckPath);
             }
 
             if (_deckTextCache != null && !string.IsNullOrEmpty(_deckTextCache.m_text))
             {
-                string clean = CleanNumber(_deckTextCache.m_text);
+                string clean = CleanNumber(_deckTextCache.m_text).Replace(",", "");
                 if (int.TryParse(clean, System.Globalization.NumberStyles.Integer,
                     System.Globalization.CultureInfo.InvariantCulture, out int val))
                 {
@@ -214,12 +219,12 @@ namespace SLMenuTrigger
         {
             if (_bossDeckTextCache == null || !_bossDeckTextCache.gameObject.activeInHierarchy)
             {
-                _bossDeckTextCache = FindTextByPath(_bossDeckPath);
+                _bossDeckTextCache = FindTextByPath(BossDeckPath);
             }
 
             if (_bossDeckTextCache != null && !string.IsNullOrEmpty(_bossDeckTextCache.m_text))
             {
-                string clean = CleanNumber(_bossDeckTextCache.m_text);
+                string clean = CleanNumber(_bossDeckTextCache.m_text).Replace(",", "");
                 if (int.TryParse(clean, System.Globalization.NumberStyles.Integer,
                     System.Globalization.CultureInfo.InvariantCulture, out int val))
                 {
@@ -244,33 +249,10 @@ namespace SLMenuTrigger
         }
 
         // ========== 获取 UI 路径 ==========
-        private string GetPath(Transform t)
-        {
-            var names = new List<string>();
-            while (t != null)
-            {
-                names.Add(t.name);
-                t = t.parent;
-            }
-            names.Reverse();
-            return string.Join("/", names);
-        }
+        private string GetPath(Transform t) => TransformPath.GoPath(t);
 
         // ========== 清理数字字符串 ==========
-        private string CleanNumber(string input)
-        {
-            if (string.IsNullOrEmpty(input)) return "";
-            bool inTag = false;
-            var sb = new System.Text.StringBuilder();
-            foreach (char c in input)
-            {
-                if (c == '<') { inTag = true; continue; }
-                if (c == '>') { inTag = false; continue; }
-                if (inTag) continue;
-                if (char.IsDigit(c) || c == '.') sb.Append(c);
-            }
-            return sb.ToString().Replace(",", "");
-        }
+        private string CleanNumber(string input) => NumberParser.CleanNumber(input);
 
         // ========== 暂停提示界面 ==========
         private void OnGUI()
@@ -281,29 +263,33 @@ namespace SLMenuTrigger
             int oldFontSize = GUI.skin.label.fontSize;
             TextAnchor oldAlignment = GUI.skin.label.alignment;
             bool oldWordWrap = GUI.skin.label.wordWrap;
+            try
+            {
+                // 设置样式：大字号、居中对齐、自动换行
+                GUI.skin.label.fontSize = 24;
+                GUI.skin.label.alignment = TextAnchor.MiddleCenter;
+                GUI.skin.label.wordWrap = true;
 
-            // 设置样式：大字号、居中对齐、自动换行
-            GUI.skin.label.fontSize = 24;
-            GUI.skin.label.alignment = TextAnchor.MiddleCenter;
-            GUI.skin.label.wordWrap = true;
+                // 使用屏幕比例计算框大小：宽 60%，高 15%（确保足够显示两行文字）
+                int width = (int)(Screen.width * 0.60f);
+                int height = (int)(Screen.height * 0.15f);
+                int x = (Screen.width - width) / 2;
+                int y = (Screen.height - height) / 2;
 
-            // 使用屏幕比例计算框大小：宽 60%，高 15%（确保足够显示两行文字）
-            int width = (int)(Screen.width * 0.60f);
-            int height = (int)(Screen.height * 0.15f);
-            int x = (Screen.width - width) / 2;
-            int y = (Screen.height - height) / 2;
+                GUI.Box(new Rect(x, y, width, height), "");
 
-            GUI.Box(new Rect(x, y, width, height), "");
+                string message = "⚠ 当前分数落后，游戏已暂停。\n按 ESC 打开菜单，选择 SL 或 解除菜单让游戏继续。";
 
-            string message = "⚠ 当前分数落后，游戏已暂停。\n按 ESC 打开菜单，选择 SL 或 解除菜单让游戏继续。";
-
-            // 文字区域留边距 20px
-            GUI.Label(new Rect(x + 20, y + 10, width - 40, height - 20), message);
-
-            // 恢复原样式
-            GUI.skin.label.fontSize = oldFontSize;
-            GUI.skin.label.alignment = oldAlignment;
-            GUI.skin.label.wordWrap = oldWordWrap;
+                // 文字区域留边距 20px
+                GUI.Label(new Rect(x + 20, y + 10, width - 40, height - 20), message);
+            }
+            finally
+            {
+                // 恢复原样式
+                GUI.skin.label.fontSize = oldFontSize;
+                GUI.skin.label.alignment = oldAlignment;
+                GUI.skin.label.wordWrap = oldWordWrap;
+            }
         }
     }
 }

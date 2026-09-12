@@ -5,6 +5,7 @@ using System.Runtime.InteropServices;
 using MaJiang.PlayMaJiang.Player;
 using MaJiang.PlayMaJiang.RoundStatistics;
 using UnityEngine;
+using Shared;
 
 namespace ScorePreview
 {
@@ -17,6 +18,9 @@ namespace ScorePreview
     public class ScoreHud : MonoBehaviour
     {
         internal static BepInEx.Logging.ManualLogSource Log;
+
+        private const string PlaceholderText = "1234567";
+        private const float PollInterval = 0.5f;
 
         private GUIStyle _style;
         private string _text = "计分: --\n和牌1: --\n和牌2: --\n和牌3: --";
@@ -31,6 +35,45 @@ namespace ScorePreview
         private float _nextPanelSearch;
         private int _yOffset;
         private int _lastRoundNum = -1;
+
+        // TMP_Text 缓存：避免每帧 FindObjectsOfType
+        private static TMPro.TMP_Text[] _tmpCache = Array.Empty<TMPro.TMP_Text>();
+        private static float _tmpCacheTime = -1f;
+        private const float TmpCacheInterval = 1f;
+
+        private static TMPro.TMP_Text[] CachedTMPs()
+        {
+            if (Time.unscaledTime - _tmpCacheTime > TmpCacheInterval)
+            {
+                _tmpCache = UnityEngine.Object.FindObjectsOfType<TMPro.TMP_Text>();
+                _tmpCacheTime = Time.unscaledTime;
+            }
+            return _tmpCache;
+        }
+
+        /// <summary>按 gameObject.name 查找缓存的 TMP_Text。</summary>
+        private static TMPro.TMP_Text FindTmpByName(string name)
+        {
+            var arr = CachedTMPs();
+            for (int i = 0; i < arr.Length; i++)
+            {
+                if (arr[i] != null && arr[i].gameObject != null && arr[i].gameObject.name == name)
+                    return arr[i];
+            }
+            return null;
+        }
+
+        /// <summary>收集所有匹配条件的 TMP_Text（带谓词过滤）。</summary>
+        private static void CollectTMPs(System.Collections.Generic.List<TMPro.TMP_Text> result, System.Predicate<TMPro.TMP_Text> predicate)
+        {
+            result.Clear();
+            var arr = CachedTMPs();
+            for (int i = 0; i < arr.Length; i++)
+            {
+                if (arr[i] != null && arr[i].gameObject != null && predicate(arr[i]))
+                    result.Add(arr[i]);
+            }
+        }
 
         private void Awake()
         {
@@ -56,27 +99,12 @@ namespace ScorePreview
             float p = 0.10f;
             try
             {
-                var dir = System.IO.Path.GetDirectoryName(
-                    System.Reflection.Assembly.GetExecutingAssembly().Location);
-                var f = System.IO.Path.Combine(dir, "ScorePreview.yml");
-                if (System.IO.File.Exists(f))
+                var defaults = new Dictionary<string, string> { ["yoffset"] = "0.1" };
+                var cfg = YamlConfig.Load("ScorePreview.yml", defaults);
+                if (cfg.TryGetValue("yoffset", out string val)
+                    && float.TryParse(val, NumberStyles.Float, CultureInfo.InvariantCulture, out float q))
                 {
-                    string[] lines = System.IO.File.ReadAllLines(f);
-                    for (int i = 0; i < lines.Length; i++)
-                    {
-                        string t = lines[i].Trim();
-                        if (t.Length == 0 || t.StartsWith("#")) continue;
-                        int ci = t.IndexOf(':');
-                        if (ci < 0) continue;
-                        string k = t.Substring(0, ci).Trim();
-                        string v = t.Substring(ci + 1).Trim();
-                        if (string.Equals(k, "yoffset", StringComparison.OrdinalIgnoreCase)
-                            && float.TryParse(v, NumberStyles.Float, CultureInfo.InvariantCulture, out float q))
-                        {
-                            p = q;
-                            break;
-                        }
-                    }
+                    p = q;
                 }
             }
             catch (Exception) { }
@@ -87,7 +115,7 @@ namespace ScorePreview
         private void Update()
         {
             if (Time.unscaledTime < _nextPoll) return;
-            _nextPoll = Time.unscaledTime + 0.5f;
+            _nextPoll = Time.unscaledTime + PollInterval;
             _pollCount++;
             try
             {
@@ -108,7 +136,6 @@ namespace ScorePreview
             if (diag != _lastDiagLogged || _pollCount % 240 == 0)
             {
                 _lastDiagLogged = diag;
-                Log?.LogInfo("D: " + diag);
             }
         }
 
@@ -120,12 +147,12 @@ namespace ScorePreview
             min = 0;
             try
             {
-                var texts = UnityEngine.Object.FindObjectsOfType<TMPro.TMP_Text>();
+                var arr = CachedTMPs();
                 bool any = false;
                 var raw = new System.Text.StringBuilder();
-                for (int i = 0; i < texts.Length; i++)
+                for (int i = 0; i < arr.Length; i++)
                 {
-                    var t = texts[i];
+                    var t = arr[i];
                     if (t == null || t.m_text == null) continue;
                     if (t.gameObject.name != "FanNum") continue;
                     string s = t.m_text;
@@ -172,10 +199,10 @@ namespace ScorePreview
         {
             try
             {
-                var texts = UnityEngine.Object.FindObjectsOfType<TMPro.TMP_Text>();
-                for (int i = 0; i < texts.Length; i++)
+                var arr = CachedTMPs();
+                for (int i = 0; i < arr.Length; i++)
                 {
-                    var t = texts[i];
+                    var t = arr[i];
                     if (t == null || t.m_text == null) continue;
                     if (t.gameObject.name != "RoundNumText") continue;
                     string s = t.m_text.Trim();
@@ -292,20 +319,10 @@ namespace ScorePreview
             return;
         }
 
-        /// <summary>
-        /// 读游戏计分预览面板 PlayerHuPanel 的四个数字文本；任一为空则视为未显示。
+
+        /// <summary>读游戏计分预览面板 PlayerHuPanel 的四个数字文本；任一为空则视为未显示。
         /// 返回格式化 HUD 文本；未知格式时原样拼接，方便对照。
         /// </summary>
-        private string PanelText()
-        {
-            if (!TryGetPanel()) return null;
-            string b = Sc(_panel._baseScoreText);
-            string f = Sc(_panel._fanText);
-            string m = Sc(_panel._independentText);
-            string t = Sc(_panel._totalScoreText);
-            if (b == "" && f == "" && m == "" && t == "") return null;
-            return "Panel: 底=" + b + " 番=" + f + " 倍=" + m + " 总=" + t;
-        }
 
         private bool TryGetPanel()
         {
@@ -318,7 +335,6 @@ namespace ScorePreview
                 if (arr[i] != null)
                 {
                     _panel = arr[i];
-                    Log?.LogInfo("found PlayerHuPanel #" + arr.Length);
                     return true;
                 }
             }
@@ -385,9 +401,6 @@ namespace ScorePreview
                     sb.Append(" lastHook=fan").Append(TingSnap.Cur.MinFan)
                       .Append(" mul").Append(TingSnap.Cur.Mul);
                 string line = sb.ToString();
-                if (m0 != "" && m1 != "" && m2 != "" && total != ""
-                    && ReadyNum(m0) && ReadyNum(m1) && ReadyNum(m2) && ReadyNum(total))
-                    LastSettleFactors = m0 + " x " + m1 + " x " + m2 + " = " + total;
                 if (line != _lastSettleLine)
                 {
                     _lastSettleLine = line;
@@ -404,7 +417,7 @@ namespace ScorePreview
         private static bool ReadyNum(string s)
         {
             if (s == null || s.Trim().Length == 0) return false;
-            if (s.Contains("1234567")) return false;
+            if (s.Contains(PlaceholderText)) return false;
             foreach (char c in s)
                 if (c >= '0' && c <= '9') return true;
             return false;
@@ -445,6 +458,7 @@ namespace ScorePreview
             long arrP = Marshal.ReadInt64(new IntPtr(lp + 0x10));
             if (arrP == 0) return res;
             int size = Marshal.ReadInt32(new IntPtr(lp + 0x18));
+            if (size < 0 || size > 1000) return res; // 防止越界读取
             long data = arrP + 0x18;
             for (int i = 0; i < size; i++)
             {
@@ -477,9 +491,10 @@ namespace ScorePreview
                 }
 
                 // 2. 后备：从 UI 文本解析（原有逻辑，保留兼容性）
-                var all = UnityEngine.Object.FindObjectsOfType<TMPro.TMP_Text>();
-                foreach (var t in all)
+                var all = CachedTMPs();
+                for (int i = 0; i < all.Length; i++)
                 {
+                    var t = all[i];
                     if (t == null || string.IsNullOrEmpty(t.m_text)) continue;
                     if (t.gameObject.name == "BaseScoreText")
                     {
@@ -488,8 +503,9 @@ namespace ScorePreview
                     }
                 }
 
-                foreach (var t in all)
+                for (int i = 0; i < all.Length; i++)
                 {
+                    var t = all[i];
                     if (t == null || string.IsNullOrEmpty(t.m_text)) continue;
                     var p = t.transform.parent;
                     if (p != null && p.name == "BaseScoreText")
@@ -499,8 +515,9 @@ namespace ScorePreview
                     }
                 }
 
-                foreach (var t in all)
+                for (int i = 0; i < all.Length; i++)
                 {
+                    var t = all[i];
                     if (t == null || string.IsNullOrEmpty(t.m_text)) continue;
                     string s = t.m_text;
                     if (s.Contains("底分"))
@@ -528,13 +545,6 @@ namespace ScorePreview
             return p.Length > 0 ? p : LiveBase();
         }
 
-        private static bool IsAllNums(string s)
-        {
-            foreach (char c in s)
-                if (c < '0' || c > '9') return false;
-            return true;
-        }
-
         /// <summary>画面上是否存在带「JiFen」祖先的节点（计分按钮可用）。</summary>
         private static bool HasAncestor(TMPro.TMP_Text t, string name)
         {
@@ -555,12 +565,12 @@ namespace ScorePreview
             fan = 0;
             try
             {
-                var texts = UnityEngine.Object.FindObjectsOfType<TMPro.TMP_Text>();
+                var arr = CachedTMPs();
                 bool any = false;
                 var raw = new System.Text.StringBuilder();
-                for (int i = 0; i < texts.Length; i++)
+                for (int i = 0; i < arr.Length; i++)
                 {
-                    var t = texts[i];
+                    var t = arr[i];
                     if (t == null || t.m_text == null) continue;
                     if (t.gameObject.name != "Total") continue;
                     if (!HasAncestor(t, "JiFen")) continue;
@@ -586,10 +596,10 @@ namespace ScorePreview
         {
             try
             {
-                var texts = UnityEngine.Object.FindObjectsOfType<TMPro.TMP_Text>();
-                for (int i = 0; i < texts.Length; i++)
+                var arr = CachedTMPs();
+                for (int i = 0; i < arr.Length; i++)
                 {
-                    var t = texts[i];
+                    var t = arr[i];
                     if (t == null || t.m_text == null) continue;
                     if (t.gameObject.name != "IndependentText") continue;
                     if (!HasAncestor(t, "PlayerStates")) continue;
@@ -605,11 +615,11 @@ namespace ScorePreview
         {
             try
             {
-                var texts = UnityEngine.Object.FindObjectsOfType<TMPro.TMP_Text>();
+                var arr = CachedTMPs();
                 decimal best = 0m;
-                for (int i = 0; i < texts.Length; i++)
+                for (int i = 0; i < arr.Length; i++)
                 {
-                    var t = texts[i];
+                    var t = arr[i];
                     if (t == null || t.m_text == null || t.gameObject.name != "FanText") continue;
                     if (!HasAncestor(t, "PlayerStates")) continue;
                     if (TryParseDisplayNumber(t.m_text, out decimal value) && value > best)
@@ -643,7 +653,7 @@ namespace ScorePreview
             _nextScan = Time.unscaledTime + 4f;
             try
             {
-                var texts = UnityEngine.Object.FindObjectsOfType<TMPro.TMP_Text>();
+                var texts = CachedTMPs();
                 bool settleSig = false;
                 for (int i = 0; i < texts.Length && !settleSig; i++)
                 {
@@ -685,7 +695,6 @@ namespace ScorePreview
                 if (hash != _lastScanHash)
                 {
                     _lastScanHash = hash;
-                    Log?.LogInfo(hash + " (total TMP=" + texts.Length + ")");
                 }
                 _settleVisible = false;
                 // 无条件 dump 结算拆解；数字变化/落地时才输出（配合 dedup）。
@@ -693,7 +702,6 @@ namespace ScorePreview
             }
             catch (Exception e)
             {
-                Log?.LogInfo("[scene] scan failed: " + FirstLine(e.ToString()));
             }
         }
 
@@ -714,25 +722,13 @@ namespace ScorePreview
                     sb.Append("\n  ").Append(GoPath(t.transform)).Append(" | ").Append(t.gameObject.name).Append("=[").Append(s.Length > 60 ? s.Substring(0, 60) : s).Append("]");
                     n++;
                 }
-                Log?.LogInfo(sb.ToString());
             }
             catch (Exception e)
             {
-                Log?.LogInfo("[deep] failed: " + FirstLine(e.ToString()));
             }
         }
 
-        private static string GoPath(Transform tr)
-        {
-            var names = new System.Collections.Generic.List<string>();
-            while (tr != null && names.Count < 7)
-            {
-                names.Add(tr.name);
-                tr = tr.parent;
-            }
-            names.Reverse();
-            return string.Join("/", names.ToArray());
-        }
+        private static string GoPath(Transform tr) => TransformPath.GoPath(tr);
 
         private static string Sc(TMPro.TMP_Text text)
         {
@@ -740,22 +736,7 @@ namespace ScorePreview
             return CleanNumber(text.m_text);
         }
 
-        private static string CleanNumber(string text)
-        {
-            if (string.IsNullOrEmpty(text)) return "";
-            var result = new System.Text.StringBuilder();
-            bool inTag = false;
-            for (int i = 0; i < text.Length; i++)
-            {
-                char c = text[i];
-                if (c == '<') { inTag = true; continue; }
-                if (c == '>') { inTag = false; continue; }
-                if (inTag) continue;
-                if ((c >= '0' && c <= '9') || c == ',' || c == '.' || c == '-')
-                    result.Append(c);
-            }
-            return result.ToString();
-        }
+        private static string CleanNumber(string text) => NumberParser.CleanNumber(text);
 
         private static bool TryParseDisplayNumber(string text, out decimal value)
         {
@@ -802,16 +783,9 @@ namespace ScorePreview
             return _hand;
         }
 
-        private static string Fmt(decimal value)
-        {
-            return value.ToString("0.##", CultureInfo.InvariantCulture);
-        }
+        private static string Fmt(decimal value) => NumberParser.Fmt(value);
 
-        private static string FirstLine(string s)
-        {
-            int i = s.IndexOf('\n');
-            return i < 0 ? s : s.Substring(0, i);
-        }
+        private static string FirstLine(string s) => StringTruncator.FirstLine(s);
 
         private void OnGUI()
         {
