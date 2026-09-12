@@ -55,7 +55,7 @@ enabled: true    # 是否启用自动暂停（false = 关闭）
 - **依赖**：BepInEx 6.0.0-be.785 或更高版本。
 - **冲突**：与 `ScorePreview`、`AutoContinue` 等插件无已知冲突。
 
-> ⚠️ 游戏 UI 路径在后续更新中变化时，可能需要更新 `_playerPath`、`_aiPath`、`_deckPath` 常量。
+> ⚠️ 游戏 UI 路径在后续更新中变化时，可能需要更新 `PlayerPath`、`AiPath`、`DeckPath`、`BossDeckPath` 常量。
 
 ## 构建与开发
 

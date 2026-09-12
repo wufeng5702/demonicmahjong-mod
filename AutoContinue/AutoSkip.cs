@@ -101,7 +101,6 @@ namespace AutoContinue
                     target = continueBtn;
                     kind = Kind.Result;
                     info = continueText;
-                    Log?.LogInfo("AutoContinue: detected Result (by unified check) btn=" + continueBtn.gameObject.name);
                 }
             }
 
