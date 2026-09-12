@@ -72,7 +72,9 @@ cd ScorePreview && build.bat && install.bat     # 或 cd AutoContinue
 ```
 mod/
   install_mods.ps1 / install_mods.bat   一键安装 / 卸载脚本
+  Shared/                              共享工具库（StringTruncator / NumberParser / TransformPath / YamlConfig）
   ScorePreview/                        分数预览 mod（源码 + 各自 README）
+  SLMenuTrigger/                       自动暂停 mod（源码 + 各自 README）
   AutoContinue/                        自动跳过 mod（源码 + 各自 README）
   tools/dumptypes/                     反编译类型转储工具（开发用）
   .env                                 DEMONIC_MAHJONG_DIR=<游戏安装目录>（不入库，本机才需要）

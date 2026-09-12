@@ -5,19 +5,31 @@
 
 ## 现状
 
-- 项目：**ScorePreview**（左上角 IMGUI 两行 HUD：`计分:` 镜像结算 / `和牌:` 听牌预测）。
-- 阶段：**和牌行已正常**（番数直接读游戏听牌面板 FanNum，见「番数与 FanNum」）；计分行靠结算
-  文本镜像，动画期间会闪 0（见「关键坑」）。无需再把番型灌回 `GetTotalScore`。
-- 个人路径全部走 `.env`（仓库根 `mod/.env`，已 gitignore）：`DEMONIC_MAHJONG_DIR`。
-  日志：`%DEMONIC_MAHJONG_DIR%\BepInEx\LogOutput.log`。
+三个 Mod 均已完成并稳定运行：
+
+| Mod | 功能 | 关键文件 |
+|-----|------|----------|
+| **ScorePreview** | 左上角 IMGUI 两行 HUD：`计分:` 镜像结算 / `和牌:` 听牌预测 | `ScoreHud.cs` / `Prediction.cs` |
+| **SLMenuTrigger** | 分数低于 Boss 时自动暂停游戏，给玩家手动 SL 时间 | `SLMenuTrigger.cs` / `Plugin.cs` |
+| **AutoContinue** | 自动跳过公告【继续】与对局【点击继续】 | `AutoSkip.cs` |
+
+共享工具库在 `Shared/`（`StringTruncator` / `NumberParser` / `TransformPath` / `YamlConfig`），
+各 `.csproj` 通过 `<Compile Include="..\Shared\*.cs" />` 引入。
+
+个人路径全部走 `.env`（仓库根 `mod/.env`，已 gitignore）：`DEMONIC_MAHJONG_DIR`。
+日志：`%DEMONIC_MAHJONG_DIR%\BepInEx\LogOutput.log`。
 
 ## 目录
 
 ```
 mod/
-  AGENT.md                 本文件（唯一交接文档；HANDOFF-*.md 已并入此文件后删除）
+  AGENT.md                 本文件（唯一交接文档）
   .env                     <本机可改，不入库> 个人路径（DEMONIC_MAHJONG_DIR=游戏目录）
-  ScorePreview/            插件源码（csproj/Plugin/ScoreHud/Prediction/README/build/install）
+  Shared/                  共享工具库（StringTruncator / NumberParser / TransformPath / YamlConfig）
+  ScorePreview/            分数预览 mod（csproj/ScoreHud/Prediction/README）
+  SLMenuTrigger/           自动暂停 mod（csproj/SLMenuTrigger/Plugin/README）
+  AutoContinue/            自动跳过 mod（csproj/AutoSkip/README）
+  install_mods.ps1         一键安装/卸载脚本
   tools/dumptypes/         类型探查工具（Mono.Cecil 读 interop 公有成员；libs/ 为本地拷贝库，不入库）
 ```
 
@@ -40,14 +52,14 @@ taskkill //F //IM "Demonic Mahjong.exe"   # exe 名带空格！勿用错名
 # 4) 启动游戏并验证
 start "" "%DEMONIC_MAHJONG_DIR%\Demonic Mahjong.exe"
 # 看日志（别直接 tail 整个文件）：
-grep -aE "ScorePreview|ting hook|uiFan|D: |Error" "%DEMONIC_MAHJONG_DIR%\BepInEx\LogOutput.log" | tail
+grep -aE "ScorePreview|SLMenuTrigger|AutoContinue|ting hook|Error" "%DEMONIC_MAHJONG_DIR%\BepInEx\LogOutput.log" | tail
 ```
 
 验证口径：
-- 构建 0 错误；install 后 `plugins\ScorePreview.dll` 时间戳 = 刚编译（装前忘关游戏会残留旧 dll，
-  症状 = 日志行为与源码不符）。
-- 加载：`Loading [ScorePreview …]` + `ScoreHud active`。
-- 听牌：钩子 `D: calls=N` 递增；`ting hook -> none: 原因` = 未成功。HUD 两行各自独立出数。
+- 构建 0 错误；install 后 dll 时间戳 = 刚编译（装前忘关游戏会残留旧 dll）。
+- ScorePreview：`Loading [ScorePreview …]` + `ScoreHud active`。
+- SLMenuTrigger：`[SLMenuTrigger] loaded. enabled=True`。
+- AutoContinue：`AutoSkip loaded`。
 
 警惕一坑：BepInEx 6 只作为 **prerelease** 发布，`/releases/latest` 只会命中旧 5.x → 依赖下载必须用
 `releases` 列表 + 资产名匹配 `(?i)il2cpp`+`x64`+非 `x86/linux/macos/unix`；直连失败自动换镜像
@@ -62,7 +74,7 @@ grep -aE "ScorePreview|ting hook|uiFan|D: |Error" "%DEMONIC_MAHJONG_DIR%\BepInEx
   5+5+5=15 精确等于同刻 FanNum=15番）。
 - **权威读法：听牌面板每个候选有 `FanNum` TMP（GO 名为 `FanNum`）**，文本如
   `<color=#75D962>16番`[Count=×4]`。ScoreHud.TryFanNumMin 直接 FindObjectsOfType<TMP_Text>
-  解析「数字+番」，**多等待取最小** → 和牌行。日志 `uiFanMin=N from [16,15,16]` 可核对。
+  解析「数字+番」，**多等待取最小** → 和牌行。
 - 兜底路径：`payload.number` 求和（`FanSum`），再兜底错误兜底 Comp.Try。
 - 结算公式（多次实证）：`总 = 底分(MultiplyNumbers[0]) × 番数([1]) × 倍率([2])`，
   倍率 = (1+Σ基础倍率) × Π(1+独立倍率)。样本：`150 x 147 x 2.25 = 49,612`、
@@ -123,11 +135,15 @@ grep -aE "ScorePreview|ting hook|uiFan|D: |Error" "%DEMONIC_MAHJONG_DIR%\BepInEx
 12. **HUD 中文**：IMGUI 默认字体仅 ASCII，中文会渲染成方块 → HUD 文案用中文标签「计分/和牌」
     只在日志里，屏显如 `和牌: 150 x 16 x 2.25 = 5400`（纯 ASCII）。两行由 `\n` 拼接。
 13. `FanZhong` 枚举 id 前缀匹配：`FanZhongCtr=箭刻2/风刻2/全带幺4…` + `FanNum=X番` 是强旁证。
+14. **NumberParser.CleanNumber**：保留逗号（ScorePreview 需要格式化数字）；SLMenuTrigger
+    需要 `.Replace(",","")` 后再 `long.TryParse`。
+15. **YamlConfig.Load**：接受文件名（如 `"Mod.yml"`），自动从 dll 所在目录加载。配置丢失时
+    自动从 `defaults` 生成默认文件。三个 Mod 统一使用此接口。
 
 ## 工具 / 常用命令
 
 ```powershell
-dotnet build -c Release                                          # 编译插件（mod\ScorePreview）
+dotnet build -c Release                                          # 编译插件（各 mod 目录）
 .\build.bat / .\install.bat                                      # 快捷构建/安装（读 .env 游戏目录）
 dotnet run --no-build -c Release -- "<interop.dll>" "<类型全名>"   # mod\tools\dumptypes 探查类型
 taskkill //F //IM "Demonic Mahjong.exe"                          # 关游戏（带空格 exe 名）
@@ -146,8 +162,7 @@ dumptypes 用法细节：
 - [ ] 交叉核对 `uiFanMin` 与 `payload.number` 求和（fanmap 日志）在若干对局中都相等；
       若总一致，可考虑去掉 UI 扫描（省 0.5s 关卡）。
 - [ ] 计分行：`_curNumbers`/`_totalNumber` 原生读验证，替换「稳定文本」拿到权威值；
-      确认动画完成前不显示 `x 0`。重放 `150x147x2.25=49,612` 与 `160x29x2.25=10,440`。
-- [ ] 计分随时可点（非听牌）场景：打出区番数 → 计分镜像同源覆盖。
+      确认动画完成前不显示 `x 0`。
 - [ ] Boss 分（`RoundStatisticsBase.AiTotalScore`）、每局明细（GetTotalScore 四元组）V2。
 
 ## 开发规范
