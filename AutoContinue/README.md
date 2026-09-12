@@ -1,28 +1,81 @@
-# AutoContinue — 自动跳过「等玩家点一下」的环节
+# AutoContinue — 自动跳过等待环节
 
-BepInEx 6 (IL2CPP) 小插件，配合同目录 `AutoContinue.yml`：
-- `announce_enabled`：启动后的**公告界面**【继续】按钮 → 自动点击进入大厅；
-- `battle_enabled`：对局加载完成后底部**【点击继续】** → 自动点击进入对局；
-- `announce_delay` / `battle_delay`：按钮出现后等 N 秒再点（默认 0=立即）。
+自动跳过游戏中的「等玩家点一下」环节，减少重复操作。
 
-原理：扫描场景里的 `UnityEngine.UI.Button`，按其子节点 TMP 文本匹配
-「继续」（公告，精确）与「点击继续」（对局，包含）两种按钮，调用 `onClick.Invoke()`。
-同一屏触发一次后 3 秒冷却；按钮消失重 arm，避免重复点击（也支持每局开场再次点击）。
+## 功能特性
 
-## 构建 / 安装
+- **公告界面**：启动后自动点击【继续】进入大厅。
+- **Boss 战加载**：加载完成后自动点击【点击继续】进入对局。
+- **结算界面**：对局结算后自动点击【继续】（默认关闭）。
+- **可配延迟**：每个环节独立配置延迟秒数，避免过早点击。
 
-```powershell
-.\build.bat      # 或 dotnet build -c Release
-taskkill //F //IM "Demonic Mahjong.exe"
-.\install.bat    # 拷 bin\Release\AutoContinue.dll -> 游戏\BepInEx\plugins\
+## 使用说明
+
+安装后首次启动，dll 同目录自动生成 `AutoContinue.yml` 配置文件。
+
+| 场景 | 默认行为 | 配置项 |
+|------|----------|--------|
+| 启动公告 | 自动点【继续】，延迟 2 秒 | `announce_enabled` / `announce_delay` |
+| Boss 战加载 | 自动点【点击继续】，延迟 1 秒 | `battle_enabled` / `battle_delay` |
+| 对局结算 | 默认关闭，延迟 5 秒 | `result_enabled` / `result_delay` |
+
+改配置后重启游戏生效。
+
+## 工作原理
+
+每 0.25 秒扫描场景中所有 `UnityEngine.UI.Button`，按子节点 TMP 文本匹配按钮：
+
+| 按钮文本 | 匹配方式 | 所属场景 |
+|----------|----------|----------|
+| `点击继续` | 包含匹配 | Boss 战加载界面 |
+| `继续` | 精确匹配（排除结算界面） | 公告界面 |
+| `继续` | 精确匹配 + 结算路径检测 | 结算界面 |
+
+同一按钮触发一次后 3 秒冷却，避免重复点击。按钮消失后重新 arm。
+
+## 日志输出
+
+```
+[Info :AutoContinue] AutoContinue v0.1.0 loaded
+[Info :AutoContinue] AutoContinue cfg: announce=True/d=2 battle=True/d=1 result=False/d=5
+[Info :AutoContinue] AutoContinue: clicked Battle btn=[xxx] text=[点击继续]
 ```
 
-首次启动在 dll 同目录自动生成 `AutoContinue.yml`（默认两项都开、延迟 0），改后重启生效。
-不需要时可删除 dll(+yml) 即卸载。
+## 配置 — `BepInEx\plugins\AutoContinue.yml`
 
-## 关键坑
+```yaml
+# 公告界面
+announce_enabled: true
+announce_delay: 2.0
 
-- 匹配按文本，不用 GO 名（跨版本稳）；只对 `isActiveAndEnabled` 的按钮生效。
-- UI 文本是 TMP（`TMPro.TMP_Text`）；本项目引用 `UnityEngine.UI.dll` + `Unity.TextMeshPro.dll`。
-- 若某版本按钮不是 `UnityEngine.UI.Button`（自定义点击组件），日志会看到
-  `AutoContinue: clicked ...` 缺失 → 需改 Click 实现（改用 EventSystem 或直接调面板方法）。
+# Boss 战加载
+battle_enabled: true
+battle_delay: 1.0
+
+# 对局结算（默认关闭）
+result_enabled: false
+result_delay: 5.0
+```
+
+## 兼容性
+
+- **游戏版本**：Unity 6000.3.21f1（IL2CPP）《Demonic Mahjong》。
+- **依赖**：BepInEx 6.0.0-be.785 或更高版本。
+- **冲突**：与 `ScorePreview`、`SLMenuTrigger` 等插件无已知冲突。
+
+> ⚠️ 若某版本按钮不是 `UnityEngine.UI.Button`（自定义点击组件），日志会缺少 `AutoContinue: clicked ...` → 需改用 EventSystem 或直接调面板方法。
+
+## 构建与开发
+
+```
+AutoContinue/
+├── PluginInfo.cs       插件元数据
+├── Plugin.cs           BepInEx 入口
+├── AutoSkip.cs         核心逻辑
+└── AutoContinue.csproj 项目文件
+```
+
+```bash
+build.bat          # 编译
+install.bat        # 拷贝 dll 到游戏 BepInEx\plugins\
+```
