@@ -312,12 +312,18 @@ function Default-Cfg([string]$proj) {
             return "# ScorePreview — 分数预览`r`n" +
             "`r`n" +
             "# HUD 距顶部的下移量 = 屏幕高度 × 该比例（1.0=满屏高），换分辨率不变形`r`n" +
-            "yoffset: 0.1`r`n" 
+            "yoffset: 0.1`r`n" +
+            "`r`n" +
+            "# HUD 字体大小`r`n" +
+            "fontsize: 24`r`n" 
         }
         "SLMenuTrigger" {
             return "# SLMenuTrigger — 低于 Boss 时自动打开菜单让玩家手动 SL（改后重启生效）`r`n" +
             "`r`n" +
-            "enabled: true`r`n"
+            "enabled: true`r`n" +
+            "`r`n" +
+            "# 暂停提示字体大小`r`n" +
+            "fontsize: 24`r`n"
         }
         default { return $null }
     }

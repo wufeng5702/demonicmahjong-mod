@@ -19,22 +19,23 @@ namespace ScorePreview
     {
         internal static BepInEx.Logging.ManualLogSource Log;
 
-        private const string PlaceholderText = "1234567";
-        private const float PollInterval = 0.5f;
+        private const string PlaceholderText = "1234567";   // UI 未就绪时的占位文本
+        private const float PollInterval = 0.5f;            // 轮询间隔（秒）
 
-        private GUIStyle _style;
-        private string _text = "计分: --\n和牌1: --\n和牌2: --\n和牌3: --";
-        private string _lastLogged;
-        private string _lastDiagLogged;
-        private string _lastError;
-        private int _pollCount;
+        private GUIStyle _style;                           // IMGUI 渲染样式
+        private string _text = "计分: --\n和牌1: --\n和牌2: --\n和牌3: --"; // HUD 显示内容
+        private string _lastLogged;                        // 上次打印的 HUD 文本（去重）
+        private string _lastDiagLogged;                    // 上次打印的诊断信息（去重）
+        private string _lastError;                         // 上次打印的错误信息（去重）
+        private int _pollCount;                            // 轮询计数
 
-        private PlayerHandPaiMianContainer _hand;
-        private PlayerHuPanel _panel;
-        private float _nextPoll;
-        private float _nextPanelSearch;
-        private int _yOffset;
-        private int _lastRoundNum = -1;
+        private PlayerHandPaiMianContainer _hand;          // 手牌容器（监听摸牌事件）
+        private PlayerHuPanel _panel;                      // 结算面板（镜像结算数据）
+        private float _nextPoll;                           // 下次轮询时间戳
+        private float _nextPanelSearch;                    // 下次搜索面板时间戳
+        private int _yOffset;                              // HUD 距顶部像素偏移
+        private int _fontSize = 24;                        // HUD 字体大小
+        private int _lastRoundNum = -1;                    // 上一帧局数（检测换局）
 
         // TMP_Text 缓存：避免每帧 FindObjectsOfType
         private static TMPro.TMP_Text[] _tmpCache = Array.Empty<TMPro.TMP_Text>();
@@ -75,10 +76,12 @@ namespace ScorePreview
             }
         }
 
+
         private void Awake()
         {
+            LoadConfig();
             _style = new GUIStyle();
-            _style.fontSize = 24;
+            _style.fontSize = _fontSize;
             _style.normal.textColor = Color.white;
             _style.padding = new RectOffset(10, 10, 6, 6);
 
@@ -86,30 +89,36 @@ namespace ScorePreview
             bg.SetPixel(0, 0, new Color(0f, 0f, 0f, 0.6f));
             bg.Apply();
             _style.normal.background = bg;
-
-            _yOffset = LoadYOffset();
-            Log?.LogInfo("ScoreHud v" + GitVersion.Version + " active, yoffset=" + _yOffset);
         }
 
-        /// <summary>读 HUD 下移值：dll 同目录 ScorePreview.yml（改后重启生效），如
+        /// <summary>读配置：dll 同目录 ScorePreview.yml（改后重启生效），如
         ///   yoffset: 0.1    # 屏幕高度的比例，1.0=100%
-        /// 无文件/无字段默认 0.1（10%）。返回最终像素偏移。</summary>
-        private static int LoadYOffset()
+        ///   fontsize: 24    # HUD 字体大小
+        /// 无文件使用默认值。</summary>
+        private void LoadConfig()
         {
-            float p = 0.10f;
             try
             {
-                var defaults = new Dictionary<string, string> { ["yoffset"] = "0.1" };
-                var cfg = YamlConfig.Load("ScorePreview.yml", defaults);
-                if (cfg.TryGetValue("yoffset", out string val)
-                    && float.TryParse(val, NumberStyles.Float, CultureInfo.InvariantCulture, out float q))
+                var defaults = new Dictionary<string, string>
                 {
-                    p = q;
+                    ["yoffset"] = "0.1",
+                    ["fontsize"] = "24"
+                };
+                var cfg = YamlConfig.Load("ScorePreview.yml", defaults);
+                if (cfg.TryGetValue("yoffset", out string yval)
+                    && float.TryParse(yval, NumberStyles.Float, CultureInfo.InvariantCulture, out float q))
+                {
+                    if (q < 0f) q = 0f;
+                    _yOffset = (int)(Screen.height * q);
+                }
+                if (cfg.TryGetValue("fontsize", out string fval)
+                    && int.TryParse(fval, out int fs))
+                {
+                    _fontSize = fs;
                 }
             }
             catch (Exception) { }
-            if (p < 0f) p = 0f;
-            return (int)(Screen.height * p);
+            Log?.LogInfo("ScorePreview cfg: yoffset=" + _yOffset + " fontsize=" + _fontSize);
         }
 
         private void Update()

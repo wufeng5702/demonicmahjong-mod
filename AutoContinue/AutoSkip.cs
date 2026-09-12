@@ -40,9 +40,6 @@ namespace AutoContinue
         private void Awake()
         {
             LoadConfig();
-            Log?.LogInfo("AutoContinue v" + GitVersion.Version + " cfg: announce=" + _announceEnabled + "/d=" + _announceDelay
-                + " battle=" + _battleEnabled + "/d=" + _battleDelay
-                + " result=" + _resultEnabled + "/d=" + _resultDelay);
         }
 
         private void Update()
@@ -263,6 +260,9 @@ namespace AutoContinue
             {
                 Log?.LogInfo("AutoContinue: cfg read failed: " + FirstLine(e.ToString()));
             }
+            Log?.LogInfo("AutoContinue cfg: announce=" + _announceEnabled + "/d=" + _announceDelay
+                + " battle=" + _battleEnabled + "/d=" + _battleDelay
+                + " result=" + _resultEnabled + "/d=" + _resultDelay);
         }
 
         private static bool ParseBool(string v, bool d)

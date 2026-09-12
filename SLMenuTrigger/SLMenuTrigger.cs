@@ -20,6 +20,7 @@ namespace SLMenuTrigger
         private TMP_Text _bossDeckTextCache;
 
         // ========== 状态字段 ==========
+        private int _fontSize = 24;
         private bool _triggered = false;
         private float _resumeCooldown = 0f;
         private bool _hasTriggeredThisRound = false;   // 本局是否已触发暂停
@@ -271,7 +272,7 @@ namespace SLMenuTrigger
             try
             {
                 // 设置样式：大字号、居中对齐、自动换行
-                GUI.skin.label.fontSize = 24;
+                GUI.skin.label.fontSize = _fontSize;
                 GUI.skin.label.alignment = TextAnchor.MiddleCenter;
                 GUI.skin.label.wordWrap = true;
 
@@ -299,7 +300,11 @@ namespace SLMenuTrigger
 
         private void LoadConfig()
         {
-            var defaults = new Dictionary<string, string> { ["enabled"] = "true" };
+            var defaults = new Dictionary<string, string>
+            {
+                ["enabled"] = "true",
+                ["fontsize"] = "24"
+            };
             var cfg = YamlConfig.Load("SLMenuTrigger.yml", defaults);
             if (cfg.TryGetValue("enabled", out string val))
             {
@@ -308,6 +313,12 @@ namespace SLMenuTrigger
                 else
                     Plugin.Log.LogWarning("Invalid enabled value, using default 'true'");
             }
+            if (cfg.TryGetValue("fontsize", out string fs)
+                && int.TryParse(fs, out int size))
+            {
+                _fontSize = size;
+            }
+            Plugin.Log.LogInfo("SLMenuTrigger cfg: enabled=" + Plugin.Enabled + " fontsize=" + _fontSize);
         }
     }
 }
