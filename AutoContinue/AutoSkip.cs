@@ -40,7 +40,7 @@ namespace AutoContinue
         private void Awake()
         {
             LoadConfig();
-            Log?.LogInfo("AutoContinue cfg: announce=" + _announceEnabled + "/d=" + _announceDelay
+            Log?.LogInfo("AutoContinue v" + GitVersion.Version + " cfg: announce=" + _announceEnabled + "/d=" + _announceDelay
                 + " battle=" + _battleEnabled + "/d=" + _battleDelay
                 + " result=" + _resultEnabled + "/d=" + _resultDelay);
         }

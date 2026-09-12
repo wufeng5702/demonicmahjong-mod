@@ -73,17 +73,12 @@ yoffset: 0.1    # HUD 距顶部的下移量 = 屏幕高度 × 该比例（1.0=�
 
 ```
 ScorePreview/
-├── Plugin.cs           BepInEx 入口：AddComponent<ScoreHud>()；Harmony 建树 PatchAll
+├── Plugin.cs           BepInEx 入口 + PluginInfo：AddComponent<ScoreHud>()；Harmony PatchAll
 ├── ScoreHud.cs         IMGUI 四行 HUD：读游戏 UI + 结算镜像；yoffset 配置
 ├── Prediction.cs       听牌钩子 TingHookPatch（提供精确倍率 + 兜底小番求和）
 ├── ScorePreview.csproj 项目文件
 ├── build.bat           编译
 └── install.bat         拷贝 dll 到游戏 BepInEx\plugins\
-```
-
-```bash
-build.bat          # 编译
-install.bat        # 拷贝 dll 到游戏 BepInEx\plugins\
 ```
 
 ## 卸载

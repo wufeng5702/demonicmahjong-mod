@@ -18,6 +18,11 @@ jobs:
             - name: Checkout code
               uses: actions/checkout@v7
 
+            - name: Write GitVersion
+              run: |
+                VER="${GITHUB_REF_NAME#v}+${GITHUB_SHA::7}"
+                echo "static class GitVersion { internal const string Version = \"${VER}\"; }" > "Shared/GitVersion.cs"
+
             - name: Create Source Zip
               run: zip -r DemonicMahjongMod.zip . -x "*.git*" "bin/*" "obj/*"
 

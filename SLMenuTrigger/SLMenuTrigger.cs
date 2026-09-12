@@ -36,6 +36,11 @@ namespace SLMenuTrigger
         private int _lastLogBossDeck;
 
         // ========== Unity 生命周期 ==========
+        private void Awake()
+        {
+            LoadConfig();
+        }
+
         private void Update()
         {
             // ---- 新对局检测：牌堆从 0 变为正数时重置“本局已触发”标志 ----
@@ -289,6 +294,19 @@ namespace SLMenuTrigger
                 GUI.skin.label.fontSize = oldFontSize;
                 GUI.skin.label.alignment = oldAlignment;
                 GUI.skin.label.wordWrap = oldWordWrap;
+            }
+        }
+
+        private void LoadConfig()
+        {
+            var defaults = new Dictionary<string, string> { ["enabled"] = "true" };
+            var cfg = YamlConfig.Load("SLMenuTrigger.yml", defaults);
+            if (cfg.TryGetValue("enabled", out string val))
+            {
+                if (bool.TryParse(val, out bool b))
+                    Plugin.Enabled = b;
+                else
+                    Plugin.Log.LogWarning("Invalid enabled value, using default 'true'");
             }
         }
     }

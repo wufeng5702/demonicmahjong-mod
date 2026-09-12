@@ -4,12 +4,12 @@ using HarmonyLib;
 
 namespace ScorePreview
 {
-    [BepInPlugin(PluginInfo.GUID, PluginInfo.Name, PluginInfo.Version)]
+    [BepInPlugin(PluginInfo.GUID, PluginInfo.Name, GitVersion.Version)]
     public class Plugin : BasePlugin
     {
         public override void Load()
         {
-            Log.LogInfo($"[{PluginInfo.Name}] v{PluginInfo.Version} loaded");
+            Log.LogInfo($"[{PluginInfo.Name}] v{GitVersion.Version} loaded");
             ScoreHud.Log = Log;
 
             var harmony = new Harmony(PluginInfo.GUID);
@@ -18,5 +18,11 @@ namespace ScorePreview
 
             AddComponent<ScoreHud>();
         }
+    }
+
+    internal static class PluginInfo
+    {
+        public const string GUID = "wufeng.demonicmahjong.scorepreview";
+        public const string Name = "ScorePreview";
     }
 }

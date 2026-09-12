@@ -61,13 +61,9 @@ enabled: true    # 是否启用自动暂停（false = 关闭）
 
 ```
 SLMenuTrigger/
-├── PluginInfo.cs          插件元数据
-├── Plugin.cs              BepInEx 入口
+├── Plugin.cs              BepInEx 入口 + PluginInfo
 ├── SLMenuTrigger.cs       核心逻辑
-└── SLMenuTrigger.csproj   项目文件
-```
-
-```bash
-build.bat          # 编译
-install.bat        # 拷贝 dll 到游戏 BepInEx\plugins\
+├── SLMenuTrigger.csproj   项目文件
+├── build.bat              编译
+└── install.bat            拷贝 dll 到游戏 BepInEx\plugins\
 ```

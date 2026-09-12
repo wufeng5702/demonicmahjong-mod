@@ -72,7 +72,7 @@ cd ScorePreview && build.bat && install.bat     # 或 cd AutoContinue
 ```
 mod/
   install_mods.ps1 / install_mods.bat   一键安装 / 卸载脚本
-  Shared/                              共享工具库（StringTruncator / NumberParser / TransformPath / YamlConfig）
+  Shared/                              共享工具库（StringTruncator / NumberParser / TransformPath / YamlConfig / GitVersion）
   ScorePreview/                        分数预览 mod（源码 + 各自 README）
   SLMenuTrigger/                       自动暂停 mod（源码 + 各自 README）
   AutoContinue/                        自动跳过 mod（源码 + 各自 README）
@@ -97,6 +97,14 @@ install_mods.bat -u -RemoveBepInEx       :: 连同 BepInEx 框架与前置（win
 
 BepInEx 每次启动会自动重新生成 `interop\`；若签名变化导致编译失败，重跑 `build.bat` + `install.bat`。
 UI 结构调整导致读取不到数字时，看 `BepInEx\LogOutput.log` 的提示（README 内「验证方式」一节有日志关键字）。
+
+## Bug 报告
+
+提交 Issue 时请附上以下信息：
+
+1. **Mod 版本**：启动日志中的版本号（如 `SLMenuTrigger v1.0.0+abc1234`）
+2. **日志文件**：`游戏目录\BepInEx\LogOutput.log`（截取相关段落或整个文件）
+3. **复现步骤**：做了什么操作、期望行为、实际行为
 
 ## License
 

@@ -88,7 +88,7 @@ namespace ScorePreview
             _style.normal.background = bg;
 
             _yOffset = LoadYOffset();
-            Log?.LogInfo("ScoreHud active (mirror PlayerHuPanel + ting hook), yoffset=" + _yOffset);
+            Log?.LogInfo("ScoreHud v" + GitVersion.Version + " active, yoffset=" + _yOffset);
         }
 
         /// <summary>读 HUD 下移值：dll 同目录 ScorePreview.yml（改后重启生效），如
