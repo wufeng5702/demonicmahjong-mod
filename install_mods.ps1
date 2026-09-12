@@ -472,4 +472,8 @@ if ($fail.Count -gt 0) {
 } else {
     Write-Host "全部安装完成。" -ForegroundColor Green
 }
+
+# 隐藏 BepInEx 控制台（无论是否新装）
+Disable-Console $game
+
 Read-Host "按回车退出"

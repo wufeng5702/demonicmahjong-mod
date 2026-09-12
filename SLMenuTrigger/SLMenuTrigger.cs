@@ -14,6 +14,7 @@ namespace SLMenuTrigger
         private const string DeckPath = "Canvas/RoundStatistics/PaiLeftCountPanel/PlayerSwapPaiLeftCountText";
         private const string BossDeckPath = "Canvas/RoundStatistics/PaiLeftCountPanel/BossSwapPaiLeftCountText";
         private const long PlaceholderScore = 1234567;
+        private const float PauseScale = 0f;  // 必须用 0，否则游戏检测到非零会立即恢复
 
         // ========== 缓存字段 ==========
         private TMP_Text _deckTextCache;
@@ -30,6 +31,9 @@ namespace SLMenuTrigger
         private bool _waitingForPlayerScore = false;
         private float _waitStartTime;
         private const float WAIT_TIMEOUT = 0.5f; // 等待 0.5 秒，UI 更新足够
+
+        // TimeScale 管理
+        private float _savedTimeScale = 1f;      // 暂停前保存的 TimeScale
 
         // 监控日志去重
         private long _lastLogPlayerScore;
@@ -64,9 +68,9 @@ namespace SLMenuTrigger
             {
                 if (_triggered)
                 {
-                    Time.timeScale = 1f;
+                    Time.timeScale = _savedTimeScale;
                     _triggered = false;
-                    Plugin.Log.LogInfo("Mod disabled. Game resumed.");
+                    Plugin.Log.LogInfo("Mod disabled. Game resumed. TimeScale=" + Time.timeScale);
                 }
                 _waitingForPlayerScore = false;
                 return;
@@ -75,11 +79,13 @@ namespace SLMenuTrigger
             // 2. 如果已触发暂停，监听外部恢复（例如按ESC后继续）
             if (_triggered)
             {
-                if (Time.timeScale == 1f)
+                if (Time.timeScale != PauseScale)
                 {
-                    _triggered = false;                     // 清除暂停状态，提示框消失
+                    // 游戏自己解除了暂停（如玩家关闭菜单），抢回 TimeScale
+                    Time.timeScale = _savedTimeScale;
+                    _triggered = false;
                     _resumeCooldown = Time.unscaledTime + 2f;
-                    Plugin.Log.LogInfo("Game resumed by other means. Cooldown 2s.");
+                    Plugin.Log.LogInfo("Game resumed by other means. Restored TimeScale=" + _savedTimeScale + ". Cooldown 2s.");
                 }
                 // 无论是否恢复，都直接返回，避免继续执行后续检测
                 return;
@@ -90,7 +96,7 @@ namespace SLMenuTrigger
                 return;
 
             // 4. 如果游戏处于暂停状态（非我们引起的），不检测
-            if (Time.timeScale == 0f) return;
+            if (Time.timeScale == PauseScale) return;
 
             // 5. 冷却时间
             if (Time.unscaledTime < _resumeCooldown) return;
@@ -142,9 +148,10 @@ namespace SLMenuTrigger
                 }
                 else if (playerScore < aiScore)
                 {
-                    Plugin.Log.LogInfo($"牌堆耗尽! Player {playerScore} < Boss {aiScore}. Pausing.");
+                    Plugin.Log.LogInfo($"牌堆耗尽! Player {playerScore} < Boss {aiScore}. Pausing. TimeScale=" + Time.timeScale);
+                    _savedTimeScale = (Time.timeScale > 0f) ? Time.timeScale : 1f;
                     _triggered = true;
-                    Time.timeScale = 0f;
+                    Time.timeScale = PauseScale;
                     _waitingForPlayerScore = false;
                     _hasTriggeredThisRound = true;
                 }
