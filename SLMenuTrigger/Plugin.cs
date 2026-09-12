@@ -13,7 +13,7 @@ namespace SLMenuTrigger
         // 用 new 隐藏基类 Log，避免警告
         public new static BepInEx.Logging.ManualLogSource Log;
 
-        private static string ConfigPath => Path.Combine(Paths.ConfigPath, "SLMenuTrigger.yml");
+        private static string ConfigPath => Path.Combine(Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location), "SLMenuTrigger.yml");
         public static bool Enabled = true;
 
         public override void Load()
