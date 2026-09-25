@@ -15,6 +15,8 @@
    -GameDir <string> 手动指定游戏目录（默认自动探测：Steam 注册表/libraryfolders → 仓库根 .env）
 
  交互规则：先问用户选哪些 mod；若一个都不选 → 直接退出，连依赖也不安装。
+ BepInEx：已装则读 BepInEx.Core.dll 的 ProductVersion 取 be 构建号；低于目标版本时询问
+          是否覆盖升级（只覆盖框架文件，保留 config/plugins/interop）。
 #>
 [CmdletBinding()]
 param(
@@ -30,6 +32,12 @@ $ErrorActionPreference = "Stop"
 $ProgressPreference = 'SilentlyContinue'
 
 $scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+
+# 目标 BepInEx 版本（开发构建）：低于此构建号时询问是否升级
+$script:BepInExTargetBuild = 785
+$script:BepInExTargetLabel = "be.785"
+$script:BepInExDownloadUrl = "https://builds.bepinex.dev/projects/bepinex_be/785/BepInEx-Unity.IL2CPP-win-x64-6.0.0-be.785%2B6abdba4.zip"
+$script:BepInExZipName = "BepInEx-Unity.IL2CPP-win-x64-6.0.0-be.785+6abdba4.zip"
 
 if ($u) { $Uninstall = $true }
 if ($Uninstall) {
@@ -217,18 +225,89 @@ function Disable-Console([string]$game) {
     }
 }
 
-function Install-BepInEx([string]$game) {
+# 探测已装 BepInEx 版本；未安装返回 $null。
+# ProductVersion 形如 6.0.0-be.785+6abdba4… → 取 be. 构建号；读不到时回退 LogOutput.log 首行。
+function Get-BepInExVersion([string]$game) {
     $core = Join-Path $game "BepInEx\core\BepInEx.Core.dll"
-    if (Test-Path $core) {
-        Write-Host "[依赖] BepInEx 已存在，跳过安装。" -ForegroundColor DarkGray
-        return $true
+    if (-not (Test-Path $core)) { return $null }
+
+    $text = ""
+    try { $text = [string](Get-Item $core).VersionInfo.ProductVersion } catch {}
+
+    if ([string]::IsNullOrWhiteSpace($text)) {
+        $log = Join-Path $game "BepInEx\LogOutput.log"
+        if (Test-Path $log) {
+            foreach ($line in (Get-Content -Path $log -TotalCount 5 -ErrorAction SilentlyContinue)) {
+                if ($line -match 'BepInEx\s+(\S+)') { $text = $matches[1]; break }
+            }
+        }
     }
 
-    Write-Host "[依赖] 未找到 BepInEx，从 BepInEx 开发构建页面下载指定版本..." -ForegroundColor Yellow
+    if ([string]::IsNullOrWhiteSpace($text)) {
+        return [pscustomobject]@{ Text = "未知版本"; Build = $null }
+    }
 
-    # 硬编码指定版本 be.785
-    $downloadUrl = "https://builds.bepinex.dev/projects/bepinex_be/785/BepInEx-Unity.IL2CPP-win-x64-6.0.0-be.785%2B6abdba4.zip"
-    $zipName = "BepInEx-Unity.IL2CPP-win-x64-6.0.0-be.785+6abdba4.zip"
+    $build = $null
+    if ($text -match 'be\.(\d+)') { $build = [int]$matches[1] }
+    return [pscustomobject]@{ Text = (($text -split '\+')[0]); Build = $build }
+}
+
+# 合并复制：目标目录已存在时 Copy-Item 会把源目录整个套进去（game\BepInEx\BepInEx），
+# 所以逐层复制“内容”，只覆盖同名文件，不新增嵌套层。
+function Copy-TreeMerge([string]$src, [string]$dst) {
+    if (Test-Path -LiteralPath $src -PathType Container) {
+        if (-not (Test-Path -LiteralPath $dst)) { New-Item -ItemType Directory -Path $dst -Force | Out-Null }
+        foreach ($item in Get-ChildItem -LiteralPath $src -Force) {
+            Copy-TreeMerge $item.FullName (Join-Path $dst $item.Name)
+        }
+    }
+    else {
+        $parent = Split-Path -Parent $dst
+        if ($parent -and -not (Test-Path -LiteralPath $parent)) { New-Item -ItemType Directory -Path $parent -Force | Out-Null }
+        # 目标是同名旧目录（历史套娃残留）时先清掉，否则 Copy-Item 会塞进去
+        if (Test-Path -LiteralPath $dst -PathType Container) { Remove-Item -LiteralPath $dst -Recurse -Force }
+        Copy-Item -LiteralPath $src -Destination $dst -Force
+    }
+}
+
+function Install-BepInEx([string]$game) {
+    $upgrade = $false
+    $ver = Get-BepInExVersion $game
+
+    if ($ver) {
+        $label = if ($null -ne $ver.Build) { "be.$($ver.Build)" } else { $ver.Text }
+        if ($null -ne $ver.Build -and $ver.Build -ge $script:BepInExTargetBuild) {
+            Write-Host "[依赖] BepInEx $($ver.Text)（>= $script:BepInExTargetLabel），跳过安装。" -ForegroundColor DarkGray
+            return $true
+        }
+        if ($null -eq $ver.Build) {
+            Write-Host "[依赖] 已装 BepInEx $($ver.Text)，未识别出 be 构建号。" -ForegroundColor Yellow
+        }
+        else {
+            Write-Host "[依赖] 已装 BepInEx $label，低于目标 $script:BepInExTargetLabel。" -ForegroundColor Yellow
+        }
+        $ans = Read-Host "是否下载并覆盖升级到 $script:BepInExTargetLabel？（仅覆盖框架文件，保留 config/plugins/interop）[y/N]"
+        # 正向匹配 y：Read-Host 无输入时返回 AutomationNull，-notmatch 会误判成假（默认必须是“不升级”）
+        if ([string]$ans -match '^[yY]') {
+            $upgrade = $true
+            Write-Host "[依赖] 升级 BepInEx $label -> $script:BepInExTargetLabel ..." -ForegroundColor Yellow
+        }
+        else {
+            Write-Host "[依赖] 保留现有 BepInEx $label，继续安装 mod。" -ForegroundColor DarkGray
+            return $true
+        }
+    }
+    else {
+        Write-Host "[依赖] 未找到 BepInEx，从 BepInEx 开发构建页面下载指定版本..." -ForegroundColor Yellow
+    }
+
+    if (Get-Process -Name "Demonic Mahjong" -ErrorAction SilentlyContinue) {
+        Write-Host "[依赖] 游戏正在运行（文件被占用），请先关闭游戏再重试。" -ForegroundColor Red
+        return $false
+    }
+
+    $downloadUrl = $script:BepInExDownloadUrl
+    $zipName = $script:BepInExZipName
 
     $tmp = Join-Path $env:TEMP "bepinex_download.zip"
     $tmpDir = Join-Path $env:TEMP ("bepinex_ex_" + [Guid]::NewGuid().ToString("N"))
@@ -241,11 +320,22 @@ function Install-BepInEx([string]$game) {
         New-Item -ItemType Directory -Path $tmpDir -Force | Out-Null
         Expand-Archive -Path $tmp -DestinationPath $tmpDir -Force
 
-        Copy-Item (Join-Path $tmpDir "BepInEx") "$game\BepInEx" -Recurse -Force
+        $dstBep = Join-Path $game "BepInEx"
+        if ($upgrade) {
+            # 升级：清掉框架自持目录的旧版残留（避免旧 DLL 混入加载）；
+            # config / plugins / interop / unity-libs 是用户数据或生成物，此步不清；
+            # cache 留到复制校验通过后再删（见下）。
+            foreach ($d in @("core", "patchers")) {
+                $p = Join-Path $dstBep $d
+                if (Test-Path $p) { Remove-Item $p -Recurse -Force }
+            }
+        }
+        Copy-TreeMerge (Join-Path $tmpDir "BepInEx") $dstBep
+
         foreach ($f in @("winhttp.dll", "doorstop_config.ini", "dotnet")) {
             $src = Join-Path $tmpDir $f
             if (Test-Path $src) {
-                Copy-Item $src "$game\$f" -Recurse -Force
+                Copy-TreeMerge $src (Join-Path $game $f)
             }
         }
 
@@ -256,12 +346,22 @@ function Install-BepInEx([string]$game) {
         Remove-Item $tmp -Force -ErrorAction SilentlyContinue
         Remove-Item $tmpDir -Recurse -Force -ErrorAction SilentlyContinue
 
-        if (-not (Test-Path $core)) {
-            throw "BepInEx 复制后校验失败"
+        $after = Get-BepInExVersion $game
+        if ($null -eq $after) { throw "BepInEx 复制后校验失败" }
+        if ($upgrade -and $null -ne $after.Build -and $after.Build -lt $script:BepInExTargetBuild) {
+            throw "升级后仍是 be.$($after.Build)（应为 $script:BepInExTargetLabel），校验失败"
         }
 
-        Write-Host "[依赖] BepInEx 安装完成（$zipName）。" -ForegroundColor Green
-        Write-Host "  提示：首次启动游戏会自动生成 interop/，之后才能编译 mod。" -ForegroundColor DarkGray
+        if ($upgrade) {
+            # 旧框架缓存可能与新程序集不一致，升级后重建
+            Remove-Item (Join-Path $game "BepInEx\cache") -Recurse -Force -ErrorAction SilentlyContinue
+            Write-Host "[依赖] BepInEx 升级完成（$($after.Text)）。" -ForegroundColor Green
+            Write-Host "  提示：若升级后启动异常，删掉 BepInEx\interop 再启动游戏重新生成。" -ForegroundColor DarkGray
+        }
+        else {
+            Write-Host "[依赖] BepInEx 安装完成（$zipName）。" -ForegroundColor Green
+            Write-Host "  提示：首次启动游戏会自动生成 interop/，之后才能编译 mod。" -ForegroundColor DarkGray
+        }
         return $true
     }
     catch {
@@ -413,7 +513,7 @@ if ($Uninstall) {
     foreach ($m in $sel) { Uninstall-Mod $m $game $RemoveBepInEx }
     if ($RemoveBepInEx) {
         $confirm = Read-Host "确认删除整个 BepInEx 框架与前置(winhttp/doorstop/dotnet)? [y/N]"
-        if ($confirm -match '^y') {
+        if ([string]$confirm -match '^y') {
             Remove-Item (Join-Path $game "BepInEx") -Recurse -Force -ErrorAction SilentlyContinue
             foreach ($f in @("winhttp.dll", "doorstop_config.ini", "dotnet")) {
                 Remove-Item (Join-Path $game $f) -Recurse -Force -ErrorAction SilentlyContinue

@@ -35,8 +35,9 @@
 1. **询问你要装哪些 mod**（可多选）；一个都不选则直接退出，连依赖也不安装。
 2. **自动探测游戏目录**：Steam 注册表 + `libraryfolders.vdf`（支持多磁盘库）→ 兜底仓库根 [.env](.env)
    的 `DEMONIC_MAHJONG_DIR` → 兜底手动输入。
-3. **自动补装依赖**：检测到缺 BepInEx 时从 BepInEx 开发构建页面下载所需依赖（`BepInEx\` + `winhttp.dll` +
-   `doorstop_config.ini` + `dotnet\`）；完成后会自动隐藏 BepInEx 日志控制台黑窗口。
+3. **自动补装/升级 BepInEx**：缺失时从 BepInEx 开发构建页面下载所需依赖（`BepInEx\` + `winhttp.dll` +
+   `doorstop_config.ini` + `dotnet\`）；已装但版本低于 `be.785` 时会**询问是否覆盖升级**（只覆盖框架文件，
+   `config\`/`plugins\`/`interop\` 保留，回答 `y` 才升级）。完成后会自动隐藏 BepInEx 日志控制台黑窗口。
 4. **逐个编译并安装**选中的 mod 到 `游戏\BepInEx\plugins\`，缺失的配置文件自动生成默认模板。
 
 常用参数（透传给 `install_mods.ps1`）：

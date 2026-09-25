@@ -38,6 +38,8 @@ mod/
 ```powershell
 # 游戏目录来源：命令行参数 > 环境变量 DEMONIC_MAHJONG_DIR > .env 同名字段 > 旧硬编码兜底
 # 1) 一键安装/卸载（交互式选 mod + Steam 自动探测 + BepInEx 依赖自动补装）
+#    BepInEx 版本探测：读 core\BepInEx.Core.dll 的 ProductVersion 取 be 构建号，低于 be.785 会询问
+#    是否覆盖升级（升级前清 core/patchers，保留 config/plugins/interop，升级后清 cache 并复核版本）
 .\install_mods.bat
 #    非交互：.\install_mods.bat   （对 install_mods.ps1 透传参数）
 #    powershell -ExecutionPolicy Bypass -File install_mods.ps1 -Mods 1,2 -SkipBepInEx
