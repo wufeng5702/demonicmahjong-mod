@@ -36,7 +36,7 @@
 ## 日志输出
 
 ```
-[Info :AutoContinue] AutoContinue v0.1.0 loaded
+[Info :AutoContinue] [AutoContinue] v0.3.2 loaded
 [Info :AutoContinue] AutoContinue cfg: announce=True/d=2 battle=True/d=1 result=False/d=5
 [Info :AutoContinue] AutoContinue: clicked Battle btn=[xxx] text=[点击继续]
 ```

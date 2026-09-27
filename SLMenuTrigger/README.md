@@ -36,18 +36,24 @@
 ## 日志输出
 
 ```
-[Info :SLMenuTrigger] SLMenuTrigger v0.1.0 loaded.
-[Info :SLMenuTrigger] 牌堆耗尽! Player 1254 < Boss 5113. Pausing.
-[Info :SLMenuTrigger] Game resumed by other means. Cooldown 2s.
+[Info :SLMenuTrigger] [SLMenuTrigger] v0.3.2 loaded
+[Info :SLMenuTrigger] SLMenuTrigger cfg: enabled=True fontsize=24
+[Info :SLMenuTrigger] 牌堆耗尽! Player 1254 < Boss 5113. Pausing. TimeScale=0
+[Info :SLMenuTrigger] Game resumed by other means. Restored TimeScale=1. Cooldown 2s.
+[Info :SLMenuTrigger] 组件卸载，恢复 TimeScale=1
 ```
 
 ## 配置 — `BepInEx\plugins\SLMenuTrigger.yml`
 
 ```yaml
 enabled: true    # 是否启用自动暂停（false = 关闭）
+fontsize: 24     # 提示框字体大小
 ```
 
-无文件 = 默认启用；改后重启游戏生效。
+无文件 = 默认值（首次运行自动生成）；改后重启游戏生效。
+
+`Time.timeScale` 只在 Mod **主动**暂停时才会被改动，恢复点有三处：游戏自身菜单关闭、Mod 被禁用/卸载、组件销毁兜底。兜底恢复仅当当前 `timeScale` 仍等于 Mod 设的 `PauseScale`，不会覆盖游戏自己设的倍速。
+
 
 ## 兼容性
 

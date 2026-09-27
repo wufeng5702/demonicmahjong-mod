@@ -34,7 +34,7 @@
 运行后脚本会：
 
 1. **询问你要装哪些 mod**（可多选）；一个都不选则直接退出，连依赖也不安装。
-2. **自动探测游戏目录**：Steam 注册表 + `libraryfolders.vdf`（支持多磁盘库）→ 兜底仓库根 [.env](.env)
+2. **自动探测游戏目录**：Steam 注册表 + `libraryfolders.vdf`（支持多磁盘库）→ 兜底仓库根 `.env`
    的 `DEMONIC_MAHJONG_DIR` → 兜底手动输入。
 3. **自动补装/升级 BepInEx**：缺失时从 BepInEx 开发构建页面下载所需依赖（`BepInEx\` + `winhttp.dll` +
    `doorstop_config.ini` + `dotnet\`）；已装但版本低于 `be.785` 时会**询问是否覆盖升级**（只覆盖框架文件，
@@ -71,18 +71,27 @@ taskkill //F //IM "Demonic Mahjong.exe"
 cd ScorePreview && build.bat && install.bat     # 或 cd AutoContinue
 ```
 
-`build.bat` / `install.bat` 从仓库根 [.env](.env) 读取 `DEMONIC_MAHJONG_DIR`，也可传参数覆盖：
-`build.bat D:\其他\游戏目录`。
+`build.bat` / `install.bat` 从仓库根 `.env`（本地文件，不入库）读取 `DEMONIC_MAHJONG_DIR`，
+也可传参数覆盖：`build.bat D:\其他\游戏目录`。
+
+改 `Shared/` 下的纯函数后跑一遍单元测试：
+
+```bat
+dotnet test Shared.Tests\Shared.Tests.csproj
+```
 
 ## 目录约定
 
 ```
 mod/
-  install_mods.ps1 / install_mods.bat   一键安装 / 卸载脚本
-  Shared/                              共享工具库（StringTruncator / NumberParser / TransformPath / YamlConfig / GitVersion）
-  ScorePreview/                        分数预览 mod（源码 + 各自 README）
+  install_mods.ps1 / install_mods.bat   一键安装 / 卸载脚本（仓库根只留这一组入口）
+  Shared/                              共享工具库（StringTruncator / NumberParser / TransformPath / YamlConfig /
+                                       FanTextParser / ScoreFormula / UiText / GitVersion）
+  Shared.Tests/                        纯函数单元测试（xunit，不依赖游戏 interop）
+  ScorePreview/                        分数预览 mod（源码 + README + build.bat/install.bat 薄包装）
   SLMenuTrigger/                       自动暂停 mod（源码 + 各自 README）
   AutoContinue/                        自动跳过 mod（源码 + 各自 README）
+  tools/modbat/                        各 mod build.bat/install.bat 共用的驱动（不放根目录，免得当成入口）
   tools/dumptypes/                     反编译类型转储工具（开发用）
   tools/compiler-licenses/             捆绑编译器的第三方许可文本（CI 打包时塞进 tools\compiler）
   tools/compiler/                      捆绑编译器（只在 release 包里，不入库）
@@ -90,7 +99,8 @@ mod/
   AGENT.md                             写给 AI/协作者的开发笔记（架构事实、坑、验证口径）
 ```
 
-真实路径只存在 [.env](.env)（已被 `.gitignore` 忽略）；代码、脚本、文档一律不含硬编码路径。
+游戏安装目录的真实路径只写在仓库根 `.env`（已被 `.gitignore` 忽略，所以不做成链接）；
+代码、脚本、文档一律不含硬编码路径。
 
 ## 卸载
 
@@ -105,13 +115,14 @@ install_mods.bat -u -RemoveBepInEx       :: 连同 BepInEx 框架与前置（win
 ## 游戏更新后
 
 BepInEx 每次启动会自动重新生成 `interop\`；若签名变化导致编译失败，重跑 `build.bat` + `install.bat`。
-UI 结构调整导致读取不到数字时，看 `BepInEx\LogOutput.log` 的提示（README 内「验证方式」一节有日志关键字）。
+UI 结构调整导致读取不到数字时，看 `BepInEx\LogOutput.log`，各 mod README 的「日志输出」一节列了关键行
+（`Diag: uiFanMin=` / `hud ->` / `SLMenuTrigger cfg:` / `AutoContinue cfg:`）。
 
 ## Bug 报告
 
 提交 Issue 时请附上以下信息：
 
-1. **Mod 版本**：启动日志中的版本号（如 `SLMenuTrigger v1.0.0+abc1234`）
+1. **Mod 版本**：启动日志中的版本号（如 `[SLMenuTrigger] v0.3.2+abc1234`）
 2. **日志文件**：`游戏目录\BepInEx\LogOutput.log`（截取相关段落或整个文件）
 3. **复现步骤**：做了什么操作、期望行为、实际行为
 

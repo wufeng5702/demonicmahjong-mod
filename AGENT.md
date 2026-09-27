@@ -1,7 +1,7 @@
 # AGENT.md — DemonicMahjong Mod 工作区
 
-本目录承载该游戏的 **BepInEx 6 (IL2CPP)** 插件开发。根目录 `AGENT.md` 是资产提取项目的
-全局说明；本文件只记录 mod 工作本身的架构事实、坑与流程，供后续会话快速上手。
+本目录承载该游戏的 **BepInEx 6 (IL2CPP)** 插件开发。本文件只记录 mod 工作本身的架构事实、
+坑与流程，供后续会话快速上手。
 
 ## 现状
 
@@ -13,8 +13,13 @@
 | **SLMenuTrigger** | 分数低于 Boss 时自动暂停游戏，给玩家手动 SL 时间 | `SLMenuTrigger.cs` / `Plugin.cs` |
 | **AutoContinue** | 自动跳过公告【继续】与对局【点击继续】 | `AutoSkip.cs` |
 
-共享工具库在 `Shared/`（`StringTruncator` / `NumberParser` / `TransformPath` / `YamlConfig`），
-各 `.csproj` 通过 `<Compile Include="..\Shared\*.cs" />` 引入。
+共享工具库在 `Shared/`（`StringTruncator` / `NumberParser` / `TransformPath` / `YamlConfig` /
+`FanTextParser` / `ScoreFormula` / `UiText` / `GitVersion`），各 `.csproj` 通过
+`<Compile Include="..\Shared\*.cs" />` 引入，其中只有 `TransformPath` 依赖 UnityEngine。
+纯函数另有 `Shared.Tests/`（xunit，net8.0，不依赖 interop），见下「验证口径」。
+
+**版本号唯一事实源是 `Shared/GitVersion.cs`**：三个 csproj 的 `<Version>` 必须与它一致，
+release.yml 发版时把 tag 写进两者（tag 格式 `vX.Y.Z`），本地改版本用 `set-version.ps1`（不入库）。
 
 个人路径全部走 `.env`（仓库根 `mod/.env`，已 gitignore）：`DEMONIC_MAHJONG_DIR`。
 日志：`%DEMONIC_MAHJONG_DIR%\BepInEx\LogOutput.log`。
@@ -25,11 +30,15 @@
 mod/
   AGENT.md                 本文件（唯一交接文档）
   .env                     <本机可改，不入库> 个人路径（DEMONIC_MAHJONG_DIR=游戏目录）
-  Shared/                  共享工具库（StringTruncator / NumberParser / TransformPath / YamlConfig）
+  Shared/                  共享工具库（StringTruncator / NumberParser / TransformPath / YamlConfig /
+                           FanTextParser / ScoreFormula / UiText / GitVersion）
+  Shared.Tests/            纯函数单元测试（xunit，不编 mod、不碰 interop）
   ScorePreview/            分数预览 mod（csproj/ScoreHud/Prediction/README）
   SLMenuTrigger/           自动暂停 mod（csproj/SLMenuTrigger/Plugin/README）
   AutoContinue/            自动跳过 mod（csproj/AutoSkip/README）
-  install_mods.ps1         一键安装/卸载脚本
+  install_mods.ps1         一键安装/卸载脚本（仓库根只留这一组入口）
+  tools/modbat/            三个 mod 的 build.bat/install.bat 共用驱动；不放根目录，免得被当成入口
+                           （包装里只传 mod 名；注意别用 shift —— shift 会连 %0 一起移，%~dp0 就错了）
   tools/dumptypes/         类型探查工具（Mono.Cecil 读 interop 公有成员；libs/ 为本地拷贝库，不入库）
   tools/compiler-licenses/ 捆绑编译器许可文本（release.yml 打包时复制进 tools\compiler\）
   tools/compiler/          捆绑编译器（release 包内才有，不入库；csc.exe + ref\<tfm>\ 引用程序集）
@@ -49,7 +58,7 @@ mod/
 #    -Compiler auto|sdk|csc：auto(默认)=有 .NET SDK 用 SDK，否则用包内 tools\compiler 的 csc；
 #    SDK 编译失败且 auto 时自动退回包内 csc。csproj 的 HintPath/LangVersion/Nullable/Version
 #    全部由 Get-CsprojInfo 从 csproj 解析，csc 用 rsp 传参（-noconfig 必须写在命令行、ref 路径
-#    用正斜杠+引号），另生成 AssemblyInfo.generated.cs 对齐 AssemblyVersion 0.1.0.0。
+#    用正斜杠+引号），另生成 AssemblyInfo.generated.cs 对齐 csproj 的 AssemblyVersion。
 # 2) 手动编译/安装（需 .NET SDK；用户机器不装 SDK 也能装 mod，见上面 -Compiler）
 .\build.bat                 # 或 dotnet build -c Release（编译物在 bin\Release\）
 
@@ -57,25 +66,34 @@ mod/
 taskkill //F //IM "Demonic Mahjong.exe"   # exe 名带空格！勿用错名
 .\install.bat               # 拷贝到 游戏\BepInEx\plugins\
 
-# 4) 启动游戏并验证
+# 4) 纯函数单元测试（改 Shared/ 后必跑；不需要游戏目录）
+dotnet test Shared.Tests/Shared.Tests.csproj
+
+# 5) 启动游戏并验证
 start "" "%DEMONIC_MAHJONG_DIR%\Demonic Mahjong.exe"
 # 看日志（别直接 tail 整个文件）：
 grep -aE "ScorePreview|SLMenuTrigger|AutoContinue|ting hook|Error" "%DEMONIC_MAHJONG_DIR%\BepInEx\LogOutput.log" | tail
 ```
 
 验证口径：
-- 构建 0 错误；install 后 dll 时间戳 = 刚编译（装前忘关游戏会残留旧 dll）。
+- **构建 0 警告 0 错误**；`dotnet test Shared.Tests/` 全绿；install 后 dll 时间戳 = 刚编译
+  （装前忘关游戏会残留旧 dll）。
 - csc 路径（`-Compiler csc`）：日志有 `编译器: csc` + `用包内 csc 编译（N 源文件，M 引用）`；
   产物与 SDK 产物的引用集、公有 API、AssemblyName/Version 必须逐项一致（Mono.Cecil 对比）。
-- ScorePreview：`Loading [ScorePreview …]` + `ScoreHud active`。
-- SLMenuTrigger：`[SLMenuTrigger] loaded. enabled=True`。
-- AutoContinue：`AutoSkip loaded`。
+- ScorePreview：`[ScorePreview] v<版本> loaded` → `ScoreHud active yoffset=… fontsize=… debug=…`；
+  开 `debug` 后再看 `[diag] Comp.Try …ms` 与 `hud -> 计分: …`。
+- SLMenuTrigger：`[SLMenuTrigger] v<版本> loaded` → `SLMenuTrigger cfg: enabled=True fontsize=24`
+  → 牌堆耗尽时 `牌堆耗尽! Player < Boss. Pausing. TimeScale=0`。
+- AutoContinue：`[AutoContinue] v<版本> loaded` → `AutoContinue cfg: announce=True/d=2 …`
+  → 点击时 `AutoContinue: clicked …`。
 
 警惕一坑：BepInEx 6 只作为 **prerelease** 发布，`/releases/latest` 只会命中旧 5.x → 依赖下载必须用
-`releases` 列表 + 资产名匹配 `(?i)il2cpp`+`x64`+非 `x86/linux/macos/unix`；直连失败自动换镜像
-`https://gh.ddlc.top/<原GitHub地址>`（install_mods.ps1 内 Get-WithRetry/Save-WithRetry）。
-首次装 BepInEx 后 interop/ 未生成，mod 编译必失败 → 先启动一次游戏（或用同版本开发拷贝的
-`BepInEx\interop` + `unity-libs` + `config` 补齐），再跑脚本。
+`releases` 列表 + 资产名匹配 `(?i)il2cpp`+`x64`+非 `x86/linux/macos/unix`。
+下载到本地一律校验 **SHA256**（`$BepInExZipSha256`；release.yml 也校验 nupkg），解压后还必须
+确认 `BepInEx\` + `BepInEx\core\BepInEx.Core.dll` 存在才允许动目标目录——否则坏包会把已有
+安装改坏。GitHub 镜像代理（如 gh.ddlc.top）只反代 github.com，对 `builds.bepinex.dev` /
+`api.nuget.org` 无意义，不要依赖。首次装 BepInEx 后 interop/ 未生成，mod 编译必失败 →
+先启动一次游戏（或用同版本开发拷贝的 `BepInEx\interop` + `unity-libs` + `config` 补齐），再跑脚本。
 
 捆绑编译器（release.yml 的 `Fetch bundled compiler` 步骤，打包前执行，产物只进 zip 不入库）：
 - `microsoft.net.compilers.toolset` 4.8.0 → 只留 `tasks/net472/` 的 csc.exe + csc.exe.config +
@@ -144,14 +162,17 @@ grep -aE "ScorePreview|SLMenuTrigger|AutoContinue|ting hook|Error" "%DEMONIC_MAH
    读 `TMP_Text` 引 `Unity.TextMeshPro.dll` + `UnityEngine.UI.dll`。csproj 已配好。
 9. **装 dll 前必须关游戏**（文件锁）。
 10. **HashSet.Slot 原生布局漂移**：interop `Slot.value` 偶尔读到脏值（如 854339984）。
-    FillFromSet 用参数扫描：`base∈{0x10,0x18} × stride∈{12,16} × valOff∈{0,4,8}`，
-    选全部落在 [0,1024] 且分数最高的组合；`slotcfg ... vals=[0:17,1:…]` 进日志。
+    `FillFromSet` 扫 `base∈{0x18,0x10} × stride∈{12,16} × valOff∈{0,4,8,12}`，
+    **用 `KnownFanIds`（`_fanZhongPayloadList` 的 id 集合）做真值校验**：一个布局读出的 n 个值
+    必须全部落在集合内才算通过，按 distinct 值数选最优（stride 大者优先）。全部验不过 →
+    返回 false，调用方**跳过该胡型**（宁可不出预测也不显示错分数）。`slotcfg … verified=…`
+    进日志，`debug=false` 时只留一行 `no layout validated`。
 11. **结算数字动画**：`TweenMultiplyNumbersNumber` 改的是文本，动画中 0/1234567/中间值
     （如 `150 x 0 x 2.81`）。计分行用**稳定后的文本**（含 `sprite name` + ReadyNum 才采信），
     只镜像 `LastSettleFactors`，面板关闭(签名→false)即归 `--`。`_curNumbers`/`_totalNumber`
     RawDecimals 原生读待验证，别依赖。
-12. **HUD 中文**：IMGUI 默认字体仅 ASCII，中文会渲染成方块 → HUD 文案用中文标签「计分/和牌」
-    只在日志里，屏显如 `和牌: 150 x 16 x 2.25 = 5400`（纯 ASCII）。两行由 `\n` 拼接。
+12. **HUD 中文**：IMGUI 中文可正常渲染（已实测，字体回退到系统字体），`计分/和牌` 标签直接
+    上屏。个别机器显示方块属字体回退缺失，不是代码问题。
 13. `FanZhong` 枚举 id 前缀匹配：`FanZhongCtr=箭刻2/风刻2/全带幺4…` + `FanNum=X番` 是强旁证。
 14. **NumberParser.CleanNumber**：保留逗号（ScorePreview 需要格式化数字）；SLMenuTrigger
     需要 `.Replace(",","")` 后再 `long.TryParse`。
@@ -162,7 +183,9 @@ grep -aE "ScorePreview|SLMenuTrigger|AutoContinue|ting hook|Error" "%DEMONIC_MAH
 
 ```powershell
 dotnet build -c Release                                          # 编译插件（各 mod 目录）
+dotnet test Shared.Tests/Shared.Tests.csproj                     # 纯函数单测（任何目录都能跑）
 .\build.bat / .\install.bat                                      # 快捷构建/安装（读 .env 游戏目录）
+   （各 mod 目录内的 build.bat/install.bat 只是调 ..\tools\modbat\build.bat / install.bat 的薄包装）
 dotnet run --no-build -c Release -- "<interop.dll>" "<类型全名>"   # mod\tools\dumptypes 探查类型
 taskkill //F //IM "Demonic Mahjong.exe"                          # 关游戏（带空格 exe 名）
 ```
@@ -187,3 +210,5 @@ dumptypes 用法细节：
 
 - **阶段性修改及时提交**：完成一个功能/修复后立即 `git commit`
 - 提交信息格式：`feat/fix/chore: 简要描述`
+- 改 `Shared/` 纯函数 → 补/改 `Shared.Tests/` 用例并跑 `dotnet test`（CI 会跑同一命令）。
+- 三个 mod 目录下 `dotnet build` 必须 **0 警告 0 错误** 才算改完。
