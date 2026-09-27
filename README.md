@@ -28,7 +28,8 @@
    - 如果 Windows 提示“无法验证发布者”，请点击“仍要运行”。  
    - 脚本会显示菜单，输入要安装的 Mod 编号（多个用逗号隔开，例如 `1,2`），按回车即可。  
    - 全程自动化：自动识别游戏目录 → 自动补装 BepInEx → 自动编译并安装选中的 Mod。  
-   - 如果电脑没有 `.NET SDK`，脚本会提示，请先安装 [.NET 6.0 SDK](https://dotnet.microsoft.com/download/dotnet/6.0) 后再重试。
+   - **无需安装 .NET SDK**：release 包内置编译器（`tools\compiler\`，Roslyn csc + net6.0 引用程序集），
+     本机装了 .NET SDK 时自动改用 SDK，都没有才报错。
 
 运行后脚本会：
 
@@ -39,6 +40,8 @@
    `doorstop_config.ini` + `dotnet\`）；已装但版本低于 `be.785` 时会**询问是否覆盖升级**（只覆盖框架文件，
    `config\`/`plugins\`/`interop\` 保留，回答 `y` 才升级）。完成后会自动隐藏 BepInEx 日志控制台黑窗口。
 4. **逐个编译并安装**选中的 mod 到 `游戏\BepInEx\plugins\`，缺失的配置文件自动生成默认模板。
+   编译器选择见 `-Compiler`（默认 `auto`：有 .NET SDK 用 SDK，否则用包内 `tools\compiler` 的 csc；
+   SDK 编译失败时也会自动退回包内 csc）。
 
 常用参数（透传给 `install_mods.ps1`）：
 
@@ -48,6 +51,8 @@ powershell -File install_mods.ps1 -Mods 1,2                        :: 跳过菜�
 powershell -File install_mods.ps1 -u -RemoveBepInEx                :: 卸载并连 BepInEx 框架一起删除
 powershell -File install_mods.ps1 -Mods 1,2 -SkipBepInEx           :: 已有 BepInEx，只装 mod
 powershell -File install_mods.ps1 -Mods 1,2 -GameDir D:\其他\目录   :: 手动指定游戏目录
+powershell -File install_mods.ps1 -Mods 1,2 -Compiler csc          :: 强制用包内编译器（不碰 SDK）
+powershell -File install_mods.ps1 -Mods 1,2 -Compiler sdk          :: 强制用本机 .NET SDK
 ```
 
 > 首次装 BepInEx 后，`interop\` 要等**启动一次游戏**才会自动生成（此后才能编译 mod）：
@@ -57,7 +62,8 @@ powershell -File install_mods.ps1 -Mods 1,2 -GameDir D:\其他\目录   :: 手�
 
 ## 手动构建 / 安装
 
-环境要求：Windows + .NET SDK（编译 mod 用）。
+环境要求：Windows；`.NET SDK` **仅开发时需要**（改源码后用 `build.bat`/`dotnet build` 编译）。
+用 release 包一键安装不需要 SDK。
 
 ```bat
 # 1) 编译并安装（先关闭游戏，否则文件被占用）
@@ -78,6 +84,8 @@ mod/
   SLMenuTrigger/                       自动暂停 mod（源码 + 各自 README）
   AutoContinue/                        自动跳过 mod（源码 + 各自 README）
   tools/dumptypes/                     反编译类型转储工具（开发用）
+  tools/compiler-licenses/             捆绑编译器的第三方许可文本（CI 打包时塞进 tools\compiler）
+  tools/compiler/                      捆绑编译器（只在 release 包里，不入库）
   .env                                 DEMONIC_MAHJONG_DIR=<游戏安装目录>（不入库，本机才需要）
   AGENT.md                             写给 AI/协作者的开发笔记（架构事实、坑、验证口径）
 ```

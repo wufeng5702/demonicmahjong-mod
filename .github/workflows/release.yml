@@ -23,6 +23,34 @@ jobs:
                 VER="${GITHUB_REF_NAME#v}+${GITHUB_SHA::7}"
                 echo "static class GitVersion { internal const string Version = \"${VER}\"; }" > "Shared/GitVersion.cs"
 
+            # 用户机器无需 .NET SDK：把 Roslyn csc + net6.0 引用程序集塞进包里（约 19MB，不入库）
+            - name: Fetch bundled compiler (Roslyn csc + net6.0 ref)
+              run: |
+                set -e
+                mkdir -p tools/compiler/ref/net6.0
+                curl -sSL -o /tmp/toolset.nupkg "https://api.nuget.org/v3-flatcontainer/microsoft.net.compilers.toolset/4.8.0/microsoft.net.compilers.toolset.4.8.0.nupkg"
+                unzip -q /tmp/toolset.nupkg -d /tmp/toolset
+                cp /tmp/toolset/tasks/net472/csc.exe \
+                   /tmp/toolset/tasks/net472/csc.exe.config \
+                   /tmp/toolset/tasks/net472/Microsoft.CodeAnalysis.dll \
+                   /tmp/toolset/tasks/net472/Microsoft.CodeAnalysis.CSharp.dll \
+                   /tmp/toolset/tasks/net472/System.Collections.Immutable.dll \
+                   /tmp/toolset/tasks/net472/System.Reflection.Metadata.dll \
+                   /tmp/toolset/tasks/net472/System.Memory.dll \
+                   /tmp/toolset/tasks/net472/System.Buffers.dll \
+                   /tmp/toolset/tasks/net472/System.Numerics.Vectors.dll \
+                   /tmp/toolset/tasks/net472/System.Threading.Tasks.Extensions.dll \
+                   /tmp/toolset/tasks/net472/System.Text.Encoding.CodePages.dll \
+                   /tmp/toolset/tasks/net472/System.Runtime.CompilerServices.Unsafe.dll \
+                   tools/compiler/
+                curl -sSL -o /tmp/ref.nupkg "https://api.nuget.org/v3-flatcontainer/microsoft.netcore.app.ref/6.0.36/microsoft.netcore.app.ref.6.0.36.nupkg"
+                unzip -q /tmp/ref.nupkg -d /tmp/ref
+                cp /tmp/ref/ref/net6.0/*.dll tools/compiler/ref/net6.0/
+                cp tools/compiler-licenses/Microsoft.Net.Compilers.Toolset.txt tools/compiler/
+                cp /tmp/ref/LICENSE.TXT tools/compiler/LICENSE.Microsoft.NETCore.App.Ref.txt
+                cp /tmp/ref/THIRD-PARTY-NOTICES.TXT tools/compiler/
+                ls -l tools/compiler/ | head
+
             - name: Create Source Zip
               run: zip -r DemonicMahjongMod.zip . -x "*.git*" "bin/*" "obj/*"
 

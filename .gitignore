@@ -2,6 +2,8 @@
 **/bin/
 **/obj/
 tools/dumptypes/libs/
+# 捆绑编译器（CI 打包前下载，见 release.yml；license 文本入库）
+tools/compiler/
 
 # 无意义的备份压缩包
 backup.zip

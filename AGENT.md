@@ -31,6 +31,8 @@ mod/
   AutoContinue/            自动跳过 mod（csproj/AutoSkip/README）
   install_mods.ps1         一键安装/卸载脚本
   tools/dumptypes/         类型探查工具（Mono.Cecil 读 interop 公有成员；libs/ 为本地拷贝库，不入库）
+  tools/compiler-licenses/ 捆绑编译器许可文本（release.yml 打包时复制进 tools\compiler\）
+  tools/compiler/          捆绑编译器（release 包内才有，不入库；csc.exe + ref\<tfm>\ 引用程序集）
 ```
 
 ## 构建 / 安装 / 验证循环
@@ -44,7 +46,11 @@ mod/
 #    非交互：.\install_mods.bat   （对 install_mods.ps1 透传参数）
 #    powershell -ExecutionPolicy Bypass -File install_mods.ps1 -Mods 1,2 -SkipBepInEx
 #    powershell -ExecutionPolicy Bypass -File install_mods.ps1 -u -RemoveBepInEx
-# 2) 手动编译/安装
+#    -Compiler auto|sdk|csc：auto(默认)=有 .NET SDK 用 SDK，否则用包内 tools\compiler 的 csc；
+#    SDK 编译失败且 auto 时自动退回包内 csc。csproj 的 HintPath/LangVersion/Nullable/Version
+#    全部由 Get-CsprojInfo 从 csproj 解析，csc 用 rsp 传参（-noconfig 必须写在命令行、ref 路径
+#    用正斜杠+引号），另生成 AssemblyInfo.generated.cs 对齐 AssemblyVersion 0.1.0.0。
+# 2) 手动编译/安装（需 .NET SDK；用户机器不装 SDK 也能装 mod，见上面 -Compiler）
 .\build.bat                 # 或 dotnet build -c Release（编译物在 bin\Release\）
 
 # 3) 安装（必须先关游戏，否则"另一个程序正在使用此文件"）
@@ -59,6 +65,8 @@ grep -aE "ScorePreview|SLMenuTrigger|AutoContinue|ting hook|Error" "%DEMONIC_MAH
 
 验证口径：
 - 构建 0 错误；install 后 dll 时间戳 = 刚编译（装前忘关游戏会残留旧 dll）。
+- csc 路径（`-Compiler csc`）：日志有 `编译器: csc` + `用包内 csc 编译（N 源文件，M 引用）`；
+  产物与 SDK 产物的引用集、公有 API、AssemblyName/Version 必须逐项一致（Mono.Cecil 对比）。
 - ScorePreview：`Loading [ScorePreview …]` + `ScoreHud active`。
 - SLMenuTrigger：`[SLMenuTrigger] loaded. enabled=True`。
 - AutoContinue：`AutoSkip loaded`。
@@ -68,6 +76,14 @@ grep -aE "ScorePreview|SLMenuTrigger|AutoContinue|ting hook|Error" "%DEMONIC_MAH
 `https://gh.ddlc.top/<原GitHub地址>`（install_mods.ps1 内 Get-WithRetry/Save-WithRetry）。
 首次装 BepInEx 后 interop/ 未生成，mod 编译必失败 → 先启动一次游戏（或用同版本开发拷贝的
 `BepInEx\interop` + `unity-libs` + `config` 补齐），再跑脚本。
+
+捆绑编译器（release.yml 的 `Fetch bundled compiler` 步骤，打包前执行，产物只进 zip 不入库）：
+- `microsoft.net.compilers.toolset` 4.8.0 → 只留 `tasks/net472/` 的 csc.exe + csc.exe.config +
+  11 个依赖 dll（不含 VB/DiaSymReader/Scripting）；`microsoft.netcore.app.ref` 6.0.36 →
+  `ref/net6.0/*.dll`（159 个）+ 两份 LICENSE/NOTICES，约 19MB。
+- 许可：Roslyn 是 MIT，文本在 `tools/compiler-licenses/Microsoft.Net.Compilers.Toolset.txt`（入库），
+  打包时复制进 `tools\compiler\`；ref pack 的许可直接从 nupkg 取。
+- 新增 TFM/升 Roslyn 版本时要同步 release.yml 的裁剪清单与 `Get-CscDefines`。
 
 ## 番数真相与 FanNum（最重要）
 

@@ -13,6 +13,8 @@
    -RemoveBepInEx    卸载时一并删除 BepInEx 框架与前置（winhttp/doorstop/dotnet）
    -SkipBepInEx      安装时跳过 BepInEx 依赖安装（仅装 mod 本体）
    -GameDir <string> 手动指定游戏目录（默认自动探测：Steam 注册表/libraryfolders → 仓库根 .env）
+   -Compiler <auto|sdk|csc>  编译 mod 用的编译器。auto(默认)=有 .NET SDK 用 SDK，
+                             没有则用 release 包自带的 tools\compiler（csc + net6.0 引用程序集）
 
  交互规则：先问用户选哪些 mod；若一个都不选 → 直接退出，连依赖也不安装。
  BepInEx：已装则读 BepInEx.Core.dll 的 ProductVersion 取 be 构建号；低于目标版本时询问
@@ -25,7 +27,9 @@ param(
     [switch]$Uninstall,
     [switch]$RemoveBepInEx,
     [switch]$SkipBepInEx,
-    [string]$GameDir = ""
+    [string]$GameDir = "",
+    [ValidateSet('auto', 'sdk', 'csc')]
+    [string]$Compiler = 'auto'
 )
 
 $ErrorActionPreference = "Stop"
@@ -370,16 +374,182 @@ function Install-BepInEx([string]$game) {
     }
 }
 
+# ============ 编译器 ============
+# 用户无需安装 .NET SDK：release 包内置 tools\compiler（Roslyn csc + net6.0 引用程序集），
+# 由 CI 在打包前下载，不入库。csc.exe 是 net472 版，跑在 Win10/11 自带的 .NET Framework 上。
+
+function Get-BundledCompiler {
+    $dir = Join-Path $scriptRoot "tools\compiler"
+    if ((Test-Path (Join-Path $dir "csc.exe")) -and (Test-Path (Join-Path $dir "ref"))) {
+        return [pscustomobject]@{ Csc = Join-Path $dir "csc.exe"; RefRoot = Join-Path $dir "ref" }
+    }
+    return $null
+}
+
+function Test-DotnetSdk {
+    try {
+        if (-not (Get-Command dotnet -ErrorAction SilentlyContinue)) { return $false }
+        $list = @(dotnet --list-sdks 2>$null | Where-Object { $_ -match '^\d' })
+        return ($list.Count -gt 0)
+    }
+    catch { return $false }
+}
+
+# 解析 csproj（唯一事实来源）：引用、源码、语言特性 —— 捆绑 csc 的入参都从这里来
+function Get-CsprojInfo([string]$projDir, [string]$game) {
+    $projFile = Get-ChildItem -Path $projDir -Filter *.csproj -File | Select-Object -First 1
+    if (-not $projFile) { throw "未找到 csproj: $projDir" }
+    [xml]$xml = Get-Content -LiteralPath $projFile.FullName -Raw
+
+    $pg = @($xml.Project.PropertyGroup) | Where-Object { $_.TargetFramework } | Select-Object -First 1
+    if (-not $pg) { throw "csproj 缺少 TargetFramework: $($projFile.Name)" }
+
+    $asmName = $pg.AssemblyName; if (-not $asmName) { $asmName = $projFile.BaseName }
+    $lang = $pg.LangVersion; if (-not $lang) { $lang = "latest" }
+    $ver = $pg.Version; if (-not $ver) { $ver = "0.0.0" }
+
+    $refs = @()
+    foreach ($r in @($xml.Project.ItemGroup.Reference)) {
+        $hp = $r.HintPath
+        if (-not $hp) { continue }
+        $p = "$hp" -replace '\$\(GameDir\)', $game -replace '/', '\'
+        if (-not [System.IO.Path]::IsPathRooted($p)) { $p = Join-Path $projDir $p }
+        $refs += $p
+    }
+
+    # 源码 = 项目目录下全部 *.cs（排除 bin/obj，SDK 默认包含）+ <Compile Include=...> 展开
+    $sources = @()
+    foreach ($cs in Get-ChildItem -Path $projDir -Recurse -Filter *.cs -File) {
+        if ($cs.FullName -notmatch '\\(bin|obj)\\') { $sources += $cs.FullName }
+    }
+    foreach ($c in @($xml.Project.ItemGroup.Compile)) {
+        $inc = $c.Include
+        if (-not $inc) { continue }
+        $pattern = "$inc" -replace '/', '\'
+        $full = if ([System.IO.Path]::IsPathRooted($pattern)) { $pattern } else { Join-Path $projDir $pattern }
+        $base = Split-Path -Parent $full
+        $leaf = Split-Path -Leaf $full
+        if (Test-Path -LiteralPath $base) {
+            foreach ($f in Get-ChildItem -Path $base -Filter $leaf -File) { $sources += $f.FullName }
+        }
+    }
+
+    return [pscustomobject]@{
+        AssemblyName = "$asmName"
+        Tfm          = "$($pg.TargetFramework)"
+        Lang         = "$lang"
+        Nullable     = "$($pg.Nullable)"
+        Version      = "$ver"
+        References   = @($refs | Sort-Object -Unique)
+        Sources      = @($sources | Sort-Object -Unique)
+    }
+}
+
+function Get-CscDefines([string]$tfm) {
+    switch ($tfm) {
+        'net6.0' { return @('NET6_0', 'NET6_0_OR_GREATER', 'NET5_0_OR_GREATER', 'NETCOREAPP', 'NETCOREAPP3_1_OR_GREATER', 'NETCOREAPP3_0_OR_GREATER', 'NETCOREAPP2_2_OR_GREATER', 'NETCOREAPP2_1_OR_GREATER', 'NETCOREAPP2_0_OR_GREATER', 'NETCOREAPP1_1_OR_GREATER', 'NETCOREAPP1_0_OR_GREATER') }
+        default { return @() }
+    }
+}
+
+function Invoke-CscBuild([string]$projDir, [string]$game, [string]$outDll) {
+    $bc = Get-BundledCompiler
+    if (-not $bc) { throw "包内编译器缺失：$scriptRoot\tools\compiler\（重新解压 release 包，或用 -Compiler sdk）" }
+
+    $info = Get-CsprojInfo $projDir $game
+    $refPack = Join-Path $bc.RefRoot $info.Tfm
+    if (-not (Test-Path $refPack)) { throw "包内引用程序集不含 $($info.Tfm)（改用 -Compiler sdk）" }
+
+    $missing = @($info.References | Where-Object { -not (Test-Path $_) })
+    if ($missing.Count -gt 0) {
+        throw ("引用缺失（interop 未生成？先启动一次游戏）:`r`n  " + ($missing -join "`r`n  "))
+    }
+
+    $outDir = Split-Path -Parent $outDll
+    New-Item -ItemType Directory -Path $outDir -Force | Out-Null
+
+    # 版本特性与 SDK 产出对齐（插件显示版本走 GitVersion，不受影响）
+    $ver = $info.Version
+    $fullVer = if ($ver -match '^\d+\.\d+\.\d+\.\d+$') { $ver } else { "$ver.0" }
+    $attrFile = Join-Path $outDir "AssemblyInfo.generated.cs"
+    $attr = @"
+using System.Reflection;
+[assembly: AssemblyVersion("$fullVer")]
+[assembly: AssemblyFileVersion("$fullVer")]
+[assembly: AssemblyInformationalVersion("$ver")]
+[assembly: AssemblyTitle("$($info.AssemblyName)")]
+[assembly: AssemblyProduct("$($info.AssemblyName)")]
+[assembly: AssemblyCompany("$($info.AssemblyName)")]
+[assembly: AssemblyConfiguration("Release")]
+"@
+    [System.IO.File]::WriteAllText($attrFile, $attr, (New-Object System.Text.UTF8Encoding $true))
+
+    $lines = @(
+        '-nostdlib+'
+        '-target:library'
+        "-langversion:$($info.Lang)"
+    )
+    if ($info.Nullable) { $lines += "-nullable:$($info.Nullable)" }
+    $lines += @('-optimize+', '-deterministic', '-debug-', '-nowarn:1701,1702')
+    $defs = Get-CscDefines $info.Tfm
+    if ($defs.Count -gt 0) { $lines += ('-define:' + ($defs -join ';')) }
+    $lines += ('-out:"' + $outDll + '"')
+    foreach ($f in Get-ChildItem -Path $refPack -Filter *.dll -File) { $lines += ('-r:"' + $f.FullName + '"') }
+    foreach ($r in $info.References) { $lines += ('-r:"' + $r + '"') }
+    foreach ($s in $info.Sources) { $lines += ('"' + $s + '"') }
+    $lines += ('"' + $attrFile + '"')
+
+    $rsp = Join-Path $outDir "csc.rsp"
+    [System.IO.File]::WriteAllLines($rsp, $lines, (New-Object System.Text.UTF8Encoding $true))
+
+    Write-Host "  用包内 csc 编译（$($info.Sources.Count) 源文件，$($info.References.Count) 引用）..." -ForegroundColor DarkGray
+    try { $output = (& $bc.Csc -noconfig "@$rsp" 2>&1) | ForEach-Object { $_.ToString() } }
+    catch { $output = @("$($_.Exception.Message)") }
+    $code = $LASTEXITCODE
+    foreach ($line in $output) {
+        if ($line -match 'error') { Write-Host "  $line" -ForegroundColor Red }
+        elseif ($line -match 'warning') { Write-Host "  $line" -ForegroundColor DarkGray }
+    }
+    if ($code -ne 0) { throw "csc 编译失败（exit $code）" }
+    if (-not (Test-Path $outDll)) { throw "csc 未生成产物: $outDll" }
+}
+
 function Publish-Mod($mod, [string]$game) {
     $projDir = Join-Path $scriptRoot $mod.Project
     $dll = Join-Path $projDir "bin\Release\$($mod.Dll)"
     Write-Host ("[mod] 编译 {0} ..." -f $mod.Project) -ForegroundColor Yellow
-    Push-Location $projDir
-    try {
-        dotnet build -c Release -p:GameDir="$game" | Out-Null
-        if ($LASTEXITCODE -ne 0) { throw "dotnet build 失败（检查 interop/ 是否已生成、.NET SDK 是否安装）" }
+
+    $mode = $Compiler
+    if ($mode -eq 'auto') {
+        if (Test-DotnetSdk) { $mode = 'sdk' }
+        elseif (Get-BundledCompiler) { $mode = 'csc' }
+        else { throw "没有可用编译器：本机无 .NET SDK，包内也无 tools\compiler（重新解压 release 包）" }
     }
-    finally { Pop-Location }
+    Write-Host "  编译器: $mode" -ForegroundColor DarkGray
+
+    if ($mode -eq 'sdk') {
+        try {
+            Push-Location $projDir
+            try {
+                dotnet build -c Release -p:GameDir="$game" | Out-Null
+                if ($LASTEXITCODE -ne 0) { throw "dotnet build 失败（检查 interop/ 是否已生成、.NET SDK 是否安装）" }
+            }
+            finally { Pop-Location }
+        }
+        catch {
+            # auto 模式下 SDK 挂了就退回包内 csc（用户机器常见：装了残 SDK / 无网络还原）
+            if ($Compiler -eq 'auto' -and (Get-BundledCompiler)) {
+                Write-Host "  dotnet build 失败，改用包内 csc：" -ForegroundColor Yellow
+                Write-Host "  $($_.Exception.Message)" -ForegroundColor DarkGray
+                Invoke-CscBuild $projDir $game $dll
+            }
+            else { throw }
+        }
+    }
+    else {
+        Invoke-CscBuild $projDir $game $dll
+    }
+
     if (-not (Test-Path $dll)) { throw "未找到产物: $dll" }
     Copy-Item $dll (Join-Path $game "BepInEx\plugins\$($mod.Dll)") -Force
     # 配置文件：不存在才写默认
