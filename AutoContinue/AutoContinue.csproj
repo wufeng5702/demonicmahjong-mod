@@ -13,7 +13,7 @@
     <ImplicitUsings>disable</ImplicitUsings>
     <RootNamespace>AutoContinue</RootNamespace>
     <AssemblyName>AutoContinue</AssemblyName>
-    <Version>0.1.0</Version>
+    <Version>0.3.2</Version>
     <OutputType>Library</OutputType>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
   </PropertyGroup>

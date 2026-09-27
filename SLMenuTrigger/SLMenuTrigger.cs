@@ -32,6 +32,15 @@ namespace SLMenuTrigger
         private float _waitStartTime;
         private const float WAIT_TIMEOUT = 0.5f; // 等待 0.5 秒，UI 更新足够
 
+        // 扫描节流：FindObjectsOfType + GetPath 是全场景扫描 + 每个对象一次字符串分配，
+        // 不能每帧跑。牌堆查询 0.5s 一次，等待期分数查询 0.25s 一次（不小于 WAIT_TIMEOUT 的一半，
+        // 保证超时判定仍能按时触发）。
+        private const float DeckSearchInterval = 0.5f;
+        private const float ScorePollInterval = 0.25f;
+        private float _nextDeckSearch;
+        private float _nextBossDeckSearch;
+        private float _nextScorePoll;
+
         // TimeScale 管理
         private float _savedTimeScale = 1f;      // 暂停前保存的 TimeScale
 
@@ -55,7 +64,7 @@ namespace SLMenuTrigger
                 _hasTriggeredThisRound = false;
                 _waitingForPlayerScore = false;
                 _deckWasZero = false;
-                Plugin.Log.LogInfo("检测到新对局开始，重置触发标志。");
+                Plugin.Logger.LogInfo("检测到新对局开始，重置触发标志。");
             }
             else if (deckCount == 0)
             {
@@ -70,7 +79,7 @@ namespace SLMenuTrigger
                 {
                     Time.timeScale = _savedTimeScale;
                     _triggered = false;
-                    Plugin.Log.LogInfo("Mod disabled. Game resumed. TimeScale=" + Time.timeScale);
+                    Plugin.Logger.LogInfo("Mod disabled. Game resumed. TimeScale=" + Time.timeScale);
                 }
                 _waitingForPlayerScore = false;
                 return;
@@ -85,7 +94,7 @@ namespace SLMenuTrigger
                     Time.timeScale = _savedTimeScale;
                     _triggered = false;
                     _resumeCooldown = Time.unscaledTime + 2f;
-                    Plugin.Log.LogInfo("Game resumed by other means. Restored TimeScale=" + _savedTimeScale + ". Cooldown 2s.");
+                    Plugin.Logger.LogInfo("Game resumed by other means. Restored TimeScale=" + _savedTimeScale + ". Cooldown 2s.");
                 }
                 // 无论是否恢复，都直接返回，避免继续执行后续检测
                 return;
@@ -104,6 +113,8 @@ namespace SLMenuTrigger
             // 6. 如果正在等待玩家总分更新
             if (_waitingForPlayerScore)
             {
+                if (Time.unscaledTime < _nextScorePoll) return;
+                _nextScorePoll = Time.unscaledTime + ScorePollInterval;
                 CheckScoresDuringWait();
                 return;
             }
@@ -113,9 +124,25 @@ namespace SLMenuTrigger
             {
                 _waitingForPlayerScore = true;
                 _waitStartTime = Time.unscaledTime;
+                _nextScorePoll = 0f;              // 立刻查一次
                 _lastLogPlayerScore = long.MinValue; // 强制首次输出日志
-                Plugin.Log.LogInfo("牌堆耗尽，等待总分更新...");
+                Plugin.Logger.LogInfo("牌堆耗尽，等待总分更新...");
                 return;
+            }
+        }
+
+        /// <summary>卸载/销毁兜底：只在仍由本 mod 冻结时恢复，避免覆盖游戏自己的暂停值。</summary>
+        private void OnDisable() => RestoreTimeScaleOnTeardown();
+        private void OnDestroy() => RestoreTimeScaleOnTeardown();
+
+        private void RestoreTimeScaleOnTeardown()
+        {
+            if (!_triggered) return;
+            _triggered = false;
+            if (Time.timeScale == PauseScale)
+            {
+                Time.timeScale = _savedTimeScale > 0f ? _savedTimeScale : 1f;
+                Plugin.Logger.LogInfo("组件卸载，恢复 TimeScale=" + Time.timeScale);
             }
         }
 
@@ -142,13 +169,13 @@ namespace SLMenuTrigger
                 // 如果任一分数为 -1（UI 未找到），视为无效，不触发暂停
                 if (playerScore < 0 || aiScore < 0)
                 {
-                    Plugin.Log.LogInfo($"牌堆耗尽，但分数读取异常 Player {playerScore} / Boss {aiScore}，跳过本次检测。");
+                    Plugin.Logger.LogInfo($"牌堆耗尽，但分数读取异常 Player {playerScore} / Boss {aiScore}，跳过本次检测。");
                     _waitingForPlayerScore = false;
                     _hasTriggeredThisRound = true;
                 }
                 else if (playerScore < aiScore)
                 {
-                    Plugin.Log.LogInfo($"牌堆耗尽! Player {playerScore} < Boss {aiScore}. Pausing. TimeScale=" + Time.timeScale);
+                    Plugin.Logger.LogInfo($"牌堆耗尽! Player {playerScore} < Boss {aiScore}. Pausing. TimeScale=" + Time.timeScale);
                     _savedTimeScale = (Time.timeScale > 0f) ? Time.timeScale : 1f;
                     _triggered = true;
                     Time.timeScale = PauseScale;
@@ -162,7 +189,7 @@ namespace SLMenuTrigger
                     if (bossDeck == 0 || bossDeck < 0)
                     {
                         // Boss 也无牌可摸，安全
-                        Plugin.Log.LogInfo($"牌堆耗尽，但玩家 {playerScore} >= Boss {aiScore}，不触发暂停。");
+                        Plugin.Logger.LogInfo($"牌堆耗尽，但玩家 {playerScore} >= Boss {aiScore}，不触发暂停。");
                         _waitingForPlayerScore = false;
                         _hasTriggeredThisRound = true;
                     }
@@ -172,7 +199,7 @@ namespace SLMenuTrigger
                         // 仅在分数或牌堆数变化时输出日志，避免刷屏
                         if (playerScore != _lastLogPlayerScore || aiScore != _lastLogAiScore || bossDeck != _lastLogBossDeck)
                         {
-                            Plugin.Log.LogInfo($"玩家 {playerScore} >= Boss {aiScore}，但 Boss 仍有 {bossDeck} 次摸牌，继续监控...");
+                            Plugin.Logger.LogInfo($"玩家 {playerScore} >= Boss {aiScore}，但 Boss 仍有 {bossDeck} 次摸牌，继续监控...");
                             _lastLogPlayerScore = playerScore;
                             _lastLogAiScore = aiScore;
                             _lastLogBossDeck = bossDeck;
@@ -209,11 +236,7 @@ namespace SLMenuTrigger
         // ========== 读取牌堆剩余数量（带缓存） ==========
         private int GetDeckCount()
         {
-            // 检查缓存是否有效，如果无效则重新查找
-            if (_deckTextCache == null || !_deckTextCache.gameObject.activeInHierarchy)
-            {
-                _deckTextCache = FindTextByPath(DeckPath);
-            }
+            RefreshDeckCache(ref _deckTextCache, DeckPath, ref _nextDeckSearch);
 
             if (_deckTextCache != null && !string.IsNullOrEmpty(_deckTextCache.m_text))
             {
@@ -230,10 +253,7 @@ namespace SLMenuTrigger
         // ========== 读取 Boss 牌堆剩余数量（带缓存） ==========
         private int GetBossDeckCount()
         {
-            if (_bossDeckTextCache == null || !_bossDeckTextCache.gameObject.activeInHierarchy)
-            {
-                _bossDeckTextCache = FindTextByPath(BossDeckPath);
-            }
+            RefreshDeckCache(ref _bossDeckTextCache, BossDeckPath, ref _nextBossDeckSearch);
 
             if (_bossDeckTextCache != null && !string.IsNullOrEmpty(_bossDeckTextCache.m_text))
             {
@@ -245,6 +265,19 @@ namespace SLMenuTrigger
                 }
             }
             return -1;
+        }
+
+        /// <summary>缓存失效（对象被销毁、或已 inactive 需要换新节点）时重找，但按
+        /// <see cref="DeckSearchInterval"/> 节流——否则换局期间会退化成每帧全场景扫描。</summary>
+        private void RefreshDeckCache(ref TMP_Text cache, string path, ref float nextSearch)
+        {
+            bool needLookup = cache == null
+                || (!cache.gameObject.activeInHierarchy && Time.unscaledTime >= nextSearch);
+            if (!needLookup) return;
+
+            TMP_Text found = FindTextByPath(path);
+            if (found != null) cache = found;
+            nextSearch = Time.unscaledTime + DeckSearchInterval;
         }
 
         // ========== 根据路径查找 TMP_Text ==========
@@ -318,14 +351,14 @@ namespace SLMenuTrigger
                 if (bool.TryParse(val, out bool b))
                     Plugin.Enabled = b;
                 else
-                    Plugin.Log.LogWarning("Invalid enabled value, using default 'true'");
+                    Plugin.Logger.LogWarning("Invalid enabled value, using default 'true'");
             }
             if (cfg.TryGetValue("fontsize", out string fs)
                 && int.TryParse(fs, out int size))
             {
                 _fontSize = size;
             }
-            Plugin.Log.LogInfo("SLMenuTrigger cfg: enabled=" + Plugin.Enabled + " fontsize=" + _fontSize);
+            Plugin.Logger.LogInfo("SLMenuTrigger cfg: enabled=" + Plugin.Enabled + " fontsize=" + _fontSize);
         }
     }
 }

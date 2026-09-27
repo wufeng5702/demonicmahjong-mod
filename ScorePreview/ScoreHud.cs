@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
-using System.Runtime.InteropServices;
 using MaJiang.PlayMaJiang.Player;
 using MaJiang.PlayMaJiang.RoundStatistics;
 using UnityEngine;
@@ -19,6 +18,9 @@ namespace ScorePreview
     {
         internal static BepInEx.Logging.ManualLogSource Log;
 
+        /// <summary>ScorePreview.yml 的 debug: true 时输出 [diag]/[scene]/[deep] 细节，默认关。</summary>
+        internal static bool DebugEnabled;
+
         private const string PlaceholderText = "1234567";   // UI 未就绪时的占位文本
         private const float PollInterval = 0.5f;            // 轮询间隔（秒）
 
@@ -30,10 +32,8 @@ namespace ScorePreview
         private int _pollCount;                            // 轮询计数
 
         private PlayerHandPaiMianContainer _hand;          // 手牌容器（监听摸牌事件）
-        private PlayerHuPanel _panel;                      // 结算面板（镜像结算数据）
         private float _nextPoll;                           // 下次轮询时间戳
-        private float _nextPanelSearch;                    // 下次搜索面板时间戳
-        private int _yOffset;                              // HUD 距顶部像素偏移
+        private float _yOffsetRatio = 0.1f;                // HUD 距顶部比例（每帧按 Screen.height 现算）
         private int _fontSize = 24;                        // HUD 字体大小
         private int _lastRoundNum = -1;                    // 上一帧局数（检测换局）
 
@@ -64,18 +64,6 @@ namespace ScorePreview
             return null;
         }
 
-        /// <summary>收集所有匹配条件的 TMP_Text（带谓词过滤）。</summary>
-        private static void CollectTMPs(System.Collections.Generic.List<TMPro.TMP_Text> result, System.Predicate<TMPro.TMP_Text> predicate)
-        {
-            result.Clear();
-            var arr = CachedTMPs();
-            for (int i = 0; i < arr.Length; i++)
-            {
-                if (arr[i] != null && arr[i].gameObject != null && predicate(arr[i]))
-                    result.Add(arr[i]);
-            }
-        }
-
 
         private void Awake()
         {
@@ -102,23 +90,32 @@ namespace ScorePreview
                 var defaults = new Dictionary<string, string>
                 {
                     ["yoffset"] = "0.1",
-                    ["fontsize"] = "24"
+                    ["fontsize"] = "24",
+                    ["debug"] = "false"
                 };
                 var cfg = YamlConfig.Load("ScorePreview.yml", defaults);
                 if (cfg.TryGetValue("yoffset", out string yval)
                     && float.TryParse(yval, NumberStyles.Float, CultureInfo.InvariantCulture, out float q))
                 {
+                    // 只存比例：分辨率/窗口化改变时按当前 Screen.height 现算，不固化成像素值
                     if (q < 0f) q = 0f;
-                    _yOffset = (int)(Screen.height * q);
+                    if (q > 1f) q = 1f;
+                    _yOffsetRatio = q;
                 }
                 if (cfg.TryGetValue("fontsize", out string fval)
                     && int.TryParse(fval, out int fs))
                 {
                     _fontSize = fs;
                 }
+                if (cfg.TryGetValue("debug", out string dval)
+                    && bool.TryParse(dval, out bool dbg))
+                {
+                    DebugEnabled = dbg;
+                }
             }
             catch (Exception) { }
-            Log?.LogInfo("ScorePreview cfg: yoffset=" + _yOffset + " fontsize=" + _fontSize);
+            Log?.LogInfo("ScoreHud active yoffset=" + _yOffsetRatio.ToString(CultureInfo.InvariantCulture)
+                + " fontsize=" + _fontSize + " debug=" + DebugEnabled);
         }
 
         private void Update()
@@ -140,11 +137,14 @@ namespace ScorePreview
                 }
             }
 
+            if (!DebugEnabled) return;
+
             string diag = "calls=" + TingSnap.Calls + " hits=" + TingSnap.Hits
                         + (TingSnap.LastErr != null ? " last=" + FirstLine(TingSnap.LastErr) : "");
             if (diag != _lastDiagLogged || _pollCount % 240 == 0)
             {
                 _lastDiagLogged = diag;
+                Log?.LogInfo("[diag] " + diag);
             }
         }
 
@@ -165,7 +165,7 @@ namespace ScorePreview
                     if (t == null || t.m_text == null) continue;
                     if (t.gameObject.name != "FanNum") continue;
                     string s = t.m_text;
-                    if (!TryParseFan(s, out int v)) continue;
+                    if (!FanTextParser.TryParseFan(s, out int v)) continue;
                     any = true;
                     if (min == 0 || v < min) min = v;
                     if (raw.Length > 0) raw.Append(",");
@@ -180,27 +180,6 @@ namespace ScorePreview
                 return any;
             }
             catch (Exception) { return false; }
-        }
-
-        /// <summary>从可能是富文本的文本里解析一个番数：挑「数字后面紧跟(可隔空白)番」的第一处。</summary>
-        private static bool TryParseFan(string s, out int v)
-        {
-            v = 0;
-            if (string.IsNullOrEmpty(s)) return false;
-            for (int i = 0; i < s.Length; i++)
-            {
-                if (s[i] < '0' || s[i] > '9') continue;
-                int j = i, n = 0;
-                while (j < s.Length && s[j] >= '0' && s[j] <= '9') { n = n * 10 + (s[j] - '0'); j++; }
-                while (j < s.Length && s[j] == ' ') j++;
-                if (j < s.Length && (s[j] == '番' || s[j] == 'ン'))
-                {
-                    v = n;
-                    return true;
-                }
-                i = j;
-            }
-            return false;
         }
 
         /// <summary>读 RoundNumText 检测新对局：当它从正数变为 0 时，清除跨局残留的预测快照。</summary>
@@ -225,7 +204,6 @@ namespace ScorePreview
                             TingSnap.LastErr = null;
                             LastSettleFactors = null;
                             _hand = null;
-                            _panel = null;
                             _settleVisible = false;
                             _settleWatchUntil = 0f;
                             Log?.LogInfo("ScorePreview: 新对局检测，重置预测快照。");
@@ -267,7 +245,7 @@ namespace ScorePreview
                     baseStr = LiveBase();
 
                 if (jfMul > 0)
-                    settleLine = "计分: " + MakeEst(baseStr, totalFan, jfMul);
+                    settleLine = "计分: " + ScoreFormula.MakeEst(baseStr, totalFan, jfMul);
                 else
                     settleLine = "计分: " + totalFan + " 番?" + (baseStr.Length > 0 ? " x " + baseStr : "");
             }
@@ -283,14 +261,14 @@ namespace ScorePreview
                 for (int i = 0; i < TingSnap.Cur.TopScores.Length && i < huLines.Count; i++)
                 {
                     var item = TingSnap.Cur.TopScores[i];
-                    huLines[i] = "和牌" + (i + 1) + ": " + MakeEst(
+                    huLines[i] = "和牌" + (i + 1) + ": " + ScoreFormula.MakeEst(
                         item.BaseScore > 0 ? Fmt(item.BaseScore) : LiveBase(), item.MinFan, mul);
                 }
             }
             else if (hasMul && TryFanNumMin(out int uiFan))
-                huLines[0] = "和牌1: " + MakeEst(BaseOrLive(), (decimal)(long)uiFan, mul);
+                huLines[0] = "和牌1: " + ScoreFormula.MakeEst(BaseOrLive(), (decimal)(long)uiFan, mul);
             else if (TingSnap.Has && TingSnap.Cur.MinFan > 0)
-                huLines[0] = "和牌1: " + MakeEst(BaseOrLive(), TingSnap.Cur.MinFan, TingSnap.Cur.Mul);
+                huLines[0] = "和牌1: " + ScoreFormula.MakeEst(BaseOrLive(), TingSnap.Cur.MinFan, TingSnap.Cur.Mul);
             else
             {
                 var prs = PlayerRoundStatistics.Instance;
@@ -304,10 +282,10 @@ namespace ScorePreview
                         if (items != null && items.Length > 0)
                             for (int i = 0; i < items.Length && i < huLines.Count; i++)
                                 huLines[i] = "和牌" + (i + 1) + ": "
-                                    + MakeEst(items[i].BaseScore > 0 ? Fmt(items[i].BaseScore) : LiveBase(),
+                                    + ScoreFormula.MakeEst(items[i].BaseScore > 0 ? Fmt(items[i].BaseScore) : LiveBase(),
                                         items[i].MinFan, items[i].Mul);
                         else
-                            huLines[0] = "和牌1: " + MakeEst(BaseOrLive(), q.Value.MinFan, q.Value.Mul);
+                            huLines[0] = "和牌1: " + ScoreFormula.MakeEst(BaseOrLive(), q.Value.MinFan, q.Value.Mul);
                     }
                 }
             }
@@ -332,23 +310,6 @@ namespace ScorePreview
         /// <summary>读游戏计分预览面板 PlayerHuPanel 的四个数字文本；任一为空则视为未显示。
         /// 返回格式化 HUD 文本；未知格式时原样拼接，方便对照。
         /// </summary>
-
-        private bool TryGetPanel()
-        {
-            if (_panel != null) return true;
-            if (Time.unscaledTime < _nextPanelSearch) return false;
-            _nextPanelSearch = Time.unscaledTime + 2f;
-            var arr = UnityEngine.Object.FindObjectsOfType<PlayerHuPanel>();
-            for (int i = 0; i < arr.Length; i++)
-            {
-                if (arr[i] != null)
-                {
-                    _panel = arr[i];
-                    return true;
-                }
-            }
-            return false;
-        }
 
         private float _settleWatchUntil;
         private float _nextSettleDump;
@@ -442,47 +403,6 @@ namespace ScorePreview
             catch (Exception) { return null; }
         }
 
-        /// <summary>底分 × 番数 × 倍率 = 预计分。底分读不到时显示 base?。
-        /// 标签由调用方拼，这里不再带 Est: 前缀。</summary>
-        private static string MakeEst(string baseS, decimal fan, decimal mul)
-        {
-            if (fan <= 0) return "--";
-            decimal b;
-            string bs = CleanNumber(baseS);
-            if (TryParseDisplayNumber(baseS, out b))
-            {
-                string total = Fmt(b * fan * mul);
-                return Fmt(b) + " x " + Fmt(fan) + " x " + Fmt(mul) + " = " + total;
-            }
-            return "base? x " + Fmt(fan) + " x " + Fmt(mul);
-        }
-
-        /// <summary>原生读 List&lt;Il2CppSystem.Decimal&gt; 的内联元素（List 布局：+0x10=_items 引用,+0x18=_size；数组元素基址=+0x18,步长16）。</summary>
-        private static List<decimal> RawDecimals(Il2CppSystem.Collections.Generic.List<Il2CppSystem.Decimal> list)
-        {
-            var res = new List<decimal>(8);
-            var lbase = list as Il2CppInterop.Runtime.InteropTypes.Il2CppObjectBase;
-            if (lbase == null) return res;
-            long lp = lbase.Pointer.ToInt64();
-            long arrP = Marshal.ReadInt64(new IntPtr(lp + 0x10));
-            if (arrP == 0) return res;
-            int size = Marshal.ReadInt32(new IntPtr(lp + 0x18));
-            if (size < 0 || size > 1000) return res; // 防止越界读取
-            long data = arrP + 0x18;
-            for (int i = 0; i < size; i++)
-            {
-                long p = data + 16L * i;
-                int w0 = Marshal.ReadInt32(new IntPtr(p + 0));
-                int w1 = Marshal.ReadInt32(new IntPtr(p + 4));
-                int w2 = Marshal.ReadInt32(new IntPtr(p + 8));
-                int w3 = Marshal.ReadInt32(new IntPtr(p + 12));
-                byte scale = (byte)((w0 >> 16) & 0x7F);
-                if (scale > 28) res.Add(-1m);
-                else res.Add(new decimal(w2, w3, w1, w0 < 0, scale));
-            }
-            return res;
-        }
-
         /// <summary>读玩家当前局实时底分（ScoreBar 的 底分 TMP）。找不到返回空。</summary>
         private string LiveBase()
         {
@@ -507,7 +427,7 @@ namespace ScorePreview
                     if (t == null || string.IsNullOrEmpty(t.m_text)) continue;
                     if (t.gameObject.name == "BaseScoreText")
                     {
-                        if (TryParseDisplayNumber(t.m_text, out decimal value))
+                        if (NumberParser.ParseDisplayNumber(t.m_text, out decimal value))
                             return Fmt(value);
                     }
                 }
@@ -519,7 +439,7 @@ namespace ScorePreview
                     var p = t.transform.parent;
                     if (p != null && p.name == "BaseScoreText")
                     {
-                        if (TryParseDisplayNumber(t.m_text, out decimal value))
+                        if (NumberParser.ParseDisplayNumber(t.m_text, out decimal value))
                             return Fmt(value);
                     }
                 }
@@ -532,7 +452,7 @@ namespace ScorePreview
                     if (s.Contains("底分"))
                     {
                         string cleaned = CleanNumber(s);
-                        if (TryParseDisplayNumber(cleaned, out decimal value))
+                        if (NumberParser.ParseDisplayNumber(cleaned, out decimal value))
                             return Fmt(value);
                     }
                 }
@@ -583,7 +503,7 @@ namespace ScorePreview
                     if (t == null || t.m_text == null) continue;
                     if (t.gameObject.name != "Total") continue;
                     if (!HasAncestor(t, "JiFen")) continue;
-                    if (!TryParseFan(t.m_text, out int v)) continue;
+                    if (!FanTextParser.TryParseFan(t.m_text, out int v)) continue;
                     any = true;
                     if (fan == 0 || v < fan) fan = v;
                     if (raw.Length > 0) raw.Append(",");
@@ -612,7 +532,7 @@ namespace ScorePreview
                     if (t == null || t.m_text == null) continue;
                     if (t.gameObject.name != "IndependentText") continue;
                     if (!HasAncestor(t, "PlayerStates")) continue;
-                    if (TryParseDisplayNumber(t.m_text, out decimal m) && m > 0)
+                    if (NumberParser.ParseDisplayNumber(t.m_text, out decimal m) && m > 0)
                         return m;
                 }
             }
@@ -631,25 +551,12 @@ namespace ScorePreview
                     var t = arr[i];
                     if (t == null || t.m_text == null || t.gameObject.name != "FanText") continue;
                     if (!HasAncestor(t, "PlayerStates")) continue;
-                    if (TryParseDisplayNumber(t.m_text, out decimal value) && value > best)
+                    if (NumberParser.ParseDisplayNumber(t.m_text, out decimal value) && value > best)
                         best = value;
                 }
                 return best;
             }
             catch (Exception) { return 0m; }
-        }
-
-        private static decimal DecimalValue(Il2CppSystem.Decimal value)
-        {
-            try
-            {
-                int scale = value.Scale;
-                if (scale >= 0 && scale <= 28)
-                    return new decimal(unchecked((int)value.Low), unchecked((int)value.Mid),
-                        unchecked((int)value.High), value.IsNegative, (byte)scale);
-            }
-            catch (Exception) { }
-            return -1m;
         }
 
         private float _nextScan;
@@ -701,15 +608,16 @@ namespace ScorePreview
                     n++;
                 }
                 string hash = sb.ToString();
-                if (hash != _lastScanHash)
+                if (DebugEnabled && hash != _lastScanHash)
                 {
                     _lastScanHash = hash;
+                    Log?.LogInfo(hash);
                 }
                 _settleVisible = false;
                 // 无条件 dump 结算拆解；数字变化/落地时才输出（配合 dedup）。
                 DumpSettlement();
             }
-            catch (Exception e)
+            catch (Exception)
             {
             }
         }
@@ -731,8 +639,9 @@ namespace ScorePreview
                     sb.Append("\n  ").Append(GoPath(t.transform)).Append(" | ").Append(t.gameObject.name).Append("=[").Append(s.Length > 60 ? s.Substring(0, 60) : s).Append("]");
                     n++;
                 }
+                if (DebugEnabled && sb.Length > 6) Log?.LogInfo(sb.ToString());
             }
-            catch (Exception e)
+            catch (Exception)
             {
             }
         }
@@ -746,36 +655,6 @@ namespace ScorePreview
         }
 
         private static string CleanNumber(string text) => NumberParser.CleanNumber(text);
-
-        private static bool TryParseDisplayNumber(string text, out decimal value)
-        {
-            value = 0m;
-            if (string.IsNullOrEmpty(text)) return false;
-            string raw = text.Trim();
-            var plain = new System.Text.StringBuilder(raw.Length);
-            bool inTag = false;
-            for (int i = 0; i < raw.Length; i++)
-            {
-                if (raw[i] == '<') { inTag = true; continue; }
-                if (raw[i] == '>') { inTag = false; continue; }
-                if (!inTag) plain.Append(raw[i]);
-            }
-            raw = plain.ToString().Trim();
-            raw = raw.Replace(",", "").Replace(" ", "");
-            decimal scale = 1m;
-            if (raw.EndsWith("M", StringComparison.OrdinalIgnoreCase))
-            {
-                scale = 1000000m;
-                raw = raw.Substring(0, raw.Length - 1);
-            }
-            else if (raw.EndsWith("K", StringComparison.OrdinalIgnoreCase))
-            {
-                scale = 1000m;
-                raw = raw.Substring(0, raw.Length - 1);
-            }
-            return decimal.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out value)
-                && (value *= scale) >= 0m;
-        }
 
         private PlayerHandPaiMianContainer TryGetHand()
         {
@@ -798,7 +677,9 @@ namespace ScorePreview
 
         private void OnGUI()
         {
-            GUI.Label(new Rect(12, 12 + _yOffset, 620, 140), _text, _style);
+            // 每帧按当前分辨率换算：改分辨率/窗口化后不残留旧像素偏移
+            int y = 12 + (int)(Screen.height * _yOffsetRatio);
+            GUI.Label(new Rect(12, y, 620, 140), _text, _style);
         }
     }
 }

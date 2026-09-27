@@ -130,12 +130,15 @@ namespace ScorePreview
             decimal baseScore = 0m, minFan = 0m, mul = 0m;
             var candidates = new System.Collections.Generic.List<Prediction>();
 
+            // 游戏自己给出的「本手牌合法 FanZhong id」集合，用来校验 Slot 原生扫描结果
+            var knownIds = KnownFanIds(prs);
+
             if (d1 != null)
             {
                 int n = d1.Count;
                 failMsg = "d1 n=" + n + " raw=" + tn;
                 for (int i = 0; i < n; i++)
-                    EvalHand((object)d1._entries[i].value, prs, candidates,
+                    EvalHand((object)d1._entries[i].value, prs, candidates, knownIds,
                         ref found, ref baseScore, ref minFan, ref mul, ref failMsg);
             }
             else if (d2 != null)
@@ -143,7 +146,7 @@ namespace ScorePreview
                 int n = d2.Count;
                 failMsg = "d2 n=" + n + " raw=" + tn;
                 for (int i = 0; i < n; i++)
-                    EvalHand((object)d2._entries[i].value, prs, candidates,
+                    EvalHand((object)d2._entries[i].value, prs, candidates, knownIds,
                         ref found, ref baseScore, ref minFan, ref mul, ref failMsg);
             }
             else return null;
@@ -166,6 +169,7 @@ namespace ScorePreview
 
         private static void EvalHand(object valueObj, PlayerRoundStatistics prs,
             System.Collections.Generic.List<Prediction> candidates,
+            System.Collections.Generic.List<int> knownIds,
             ref bool found, ref decimal baseScore, ref decimal minFan, ref decimal mul,
             ref string failMsg)
         {
@@ -204,14 +208,21 @@ namespace ScorePreview
                     int setCount = set._count;
                     int bucketsLen = set._buckets != null ? set._buckets.Length : -1;
                     int slotsLen = set._slots != null ? set._slots.Length : -1;
-                    FillFromSet(set, inner);
+                    bool ok = FillFromSet(set, inner, knownIds);
                     Diag("fans=set count=" + setCount + " buckets=" + bucketsLen + " slots=" + slotsLen
-                        + " filled=" + inner.Count);
+                        + " filled=" + inner.Count + " verified=" + ok);
                     DumpSetOnce(set);
+                    // 槽位扫描验不过 → 直接跳过这个胡型：宁可这一条不出预测，也不用猜出来的番数算分
+                    if (!ok && setCount > 0)
+                    {
+                        failMsg = "slot-scan-unverified n=" + setCount
+                            + " known=" + knownIds.Count + " buckets=" + bucketsLen + " slots=" + slotsLen;
+                        continue;
+                    }
                 }
 
                 long fanSum = FanSum(prs, inner);
-                Diag("fanSum(" + j + ")=" + fanSum + " inner=" + inner.Count + FanIds(inner));
+                if (DebugEnabled) Diag("fanSum(" + j + ")=" + fanSum + " inner=" + inner.Count + FanIds(inner));
 
                 // 外层容器元素类型用接口 IEnumerable<FanZhong>，使其原生实现的
                 // IEnumerable<T> 与 GetTotalScore 参数 IEnumerable<IEnumerable<FanZhong>>
@@ -275,15 +286,44 @@ namespace ScorePreview
             }
         }
 
+        /// <summary>与 ScoreHud 共用的 debug 开关（ScorePreview.yml 的 debug 项）。</summary>
+        private static bool DebugEnabled => ScoreHud.DebugEnabled;
+
         internal static void Diag(string msg)
         {
+            if (!ScoreHud.DebugEnabled) return;
+            ScoreHud.Log?.LogInfo("[diag] " + msg);
+        }
+
+        /// <summary>本手牌全部合法 FanZhong id（游戏自己的 _fanZhongPayloadList），
+        /// 用作 HashSet 槽位原生扫描的真值集合。</summary>
+        private static System.Collections.Generic.List<int> KnownFanIds(PlayerRoundStatistics prs)
+        {
+            var ids = new System.Collections.Generic.List<int>(8);
+            try
+            {
+                var plist = prs != null ? prs._fanZhongPayloadList : null;
+                if (plist == null) return ids;
+                var arr = plist.value;
+                if (arr == null) return ids;
+                for (int a = 0; a < arr.Length; a++)
+                {
+                    var payload = arr[a];
+                    if (payload == null) continue;
+                    int id = (int)payload.id;
+                    if (!ids.Contains(id)) ids.Add(id);
+                }
+            }
+            catch (Exception) { }
+            return ids;
         }
 
         private static long FanSum(PlayerRoundStatistics prs, Il2CppSystem.Collections.Generic.List<FanZhong> inner)
         {
             long sum = 0;  // 结算小番 = payload.number 之和（FanZhongCtr 列表文案已验证：箭刻2+风刻2+全带幺4+...=FanNum）
             long big = 0;  // payload.fan 大类（调试）
-            var sb = new System.Text.StringBuilder("fanmap");
+            // 只有开 debug 才拼诊断串：否则每次听牌重算都白分配
+            var sb = DebugEnabled ? new System.Text.StringBuilder("fanmap") : null;
             var plist = prs._fanZhongPayloadList;
             if (plist == null) return sum;
             var arr = plist.value;
@@ -298,14 +338,15 @@ namespace ScorePreview
                     {
                         sum += payload.number;
                         big += payload.fan;
-                        sb.Append(" id=").Append((int)payload.id)
-                          .Append("(num=").Append(payload.number)
-                          .Append(",fan=").Append(payload.fan).Append(")");
+                        if (sb != null)
+                            sb.Append(" id=").Append((int)payload.id)
+                              .Append("(num=").Append(payload.number)
+                              .Append(",fan=").Append(payload.fan).Append(")");
                         break;
                     }
                 }
             }
-            if (sb.Length > 7) Diag(sb.ToString() + " small=" + sum + " big=" + big);
+            if (sb != null && sb.Length > 7) Diag(sb.ToString() + " small=" + sum + " big=" + big);
             return sum;
         }
 
@@ -324,6 +365,7 @@ namespace ScorePreview
 
         private static void DumpTuple(object t, int fans, decimal f, decimal m)
         {
+            if (!DebugEnabled) return;
             var tobj = t as Il2CppInterop.Runtime.InteropTypes.Il2CppObjectBase;
             if (tobj == null)
             {
@@ -380,6 +422,7 @@ namespace ScorePreview
 
         private static void DumpSetOnce(HashSet<FanZhong> set)
         {
+            if (!DebugEnabled) return;
             if (_setDumped) return;
             _setDumped = true;
             try
@@ -486,6 +529,7 @@ namespace ScorePreview
             if (_dRoute != route)
             {
                 _dRoute = route;
+                Diag("decimal route=" + route);
             }
         }
 
@@ -497,76 +541,94 @@ namespace ScorePreview
 
         private static string Hex(int v) => "0x" + v.ToString("X8");
 
-        private static void FillFromSet(HashSet<FanZhong> set, Il2CppSystem.Collections.Generic.List<FanZhong> inner)
+        /// <summary>从 HashSet&lt;FanZhong&gt; 的桶/槽取出全部枚举值。
+        /// interop 的 Slot.value 会读到脏值，所以改走原生内存扫 (base,stride,valOff)。
+        /// 关键：用 knownIds（游戏自己的 _fanZhongPayloadList.id）做真值校验——
+        /// 一个布局读出的 n 个值必须全部落在集合内才算通过；一个都验不过就返回 false，
+        /// 由调用方跳过该胡型。宁可不出预测，也不用猜出来的番数算分。</summary>
+        private static bool FillFromSet(HashSet<FanZhong> set,
+            Il2CppSystem.Collections.Generic.List<FanZhong> inner,
+            System.Collections.Generic.List<int> knownIds)
         {
+            inner.Clear();
             var buckets = set._buckets;
             var slots = set._slots;
-            if (buckets == null || slots == null || buckets.Length == 0) return;
+            if (buckets == null || slots == null || buckets.Length == 0) return false;
             int n = set._count;
-            if (n < 0 || n > slots.Length) return;
+            if (n <= 0 || n > slots.Length) return false;
 
             DumpSlotsRaw(set);
 
-            // interop 的 Slot.value 读到脏数据 → 原生内存扫 (base,stride,valOff)：
-            // 选让读出的 n 个值全部落在合法枚举区间且尽量多样的一组。
+            // Il2Cpp 数组布局：obj(0x10) + max_length(8) + 数据区(0x18)；0x10 保留为兼容探测
             long Pl = slots.Pointer.ToInt64();
-            long[] bases = { 0x10, 0x18 };
+            long[] bases = { 0x18, 0x10 };
             int[] strides = { 12, 16 };
-            long bestScore = -1; int bestB = 0, bestS = 12, bestO = 8;
-            for (int bi = 0; bi < 2; bi++)
-                for (int si = 0; si < 2; si++)
+            int bestDistinct = -1;
+            int bestB = 0, bestS = 12, bestO = 8;
+            var bestVals = new System.Collections.Generic.List<int>(n);
+
+            for (int bi = 0; bi < bases.Length; bi++)
+                for (int si = 0; si < strides.Length; si++)
                     for (int oi = 0; oi < 4; oi++)
                     {
                         int voff = oi * 4;
-                        long score = 0; bool bad = false;
+                        var vals = new System.Collections.Generic.List<int>(n);
+                        bool bad = false;
                         for (int i = 0; i < n; i++)
                         {
                             int v;
                             try { v = Marshal.ReadInt32(new IntPtr(Pl + bases[bi] + (long)i * strides[si] + voff)); }
                             catch (Exception) { bad = true; break; }
                             if (v < 0 || v > 1024) { bad = true; break; }
-                            score += v;
+                            if (knownIds.Count > 0 && knownIds.IndexOf(v) < 0) { bad = true; break; }
+                            vals.Add(v);
                         }
                         if (bad) continue;
-                        if (score > bestScore || (score == bestScore && strides[si] > bestS)) { bestScore = score; bestB = bi; bestS = strides[si]; bestO = voff; }
+
+                        int distinct = 0;
+                        for (int a = 0; a < vals.Count; a++)
+                        {
+                            bool dup = false;
+                            for (int b = a + 1; b < vals.Count; b++)
+                                if (vals[b] == vals[a]) { dup = true; break; }
+                            if (!dup) distinct++;
+                        }
+                        if (distinct > bestDistinct || (distinct == bestDistinct && strides[si] > bestS))
+                        {
+                            bestDistinct = distinct;
+                            bestB = bi; bestS = strides[si]; bestO = voff;
+                            bestVals = vals;
+                        }
                     }
-            if (bestScore >= 0 && n > 0)
+
+            if (bestDistinct < 0)
+            {
+                Diag("slotcfg: no layout validated n=" + n + " known=" + knownIds.Count);
+                return false;
+            }
+
+            for (int i = 0; i < bestVals.Count; i++) inner.Add((FanZhong)bestVals[i]);
+
+            if (DebugEnabled)
             {
                 var sb = new System.Text.StringBuilder("slotcfg base=");
-                sb.Append(bases[bestB].ToString("X")).Append(" stride=").Append(bestS).Append(" valOff=").Append(bestO).Append(" vals=[");
-                for (int i = 0; i < n; i++)
+                sb.Append(bases[bestB].ToString("X")).Append(" stride=").Append(bestS)
+                  .Append(" valOff=").Append(bestO).Append(" distinct=").Append(bestDistinct)
+                  .Append(" verified=").Append(knownIds.Count > 0).Append(" vals=[");
+                for (int i = 0; i < bestVals.Count; i++)
                 {
-                    int v;
-                    try { v = Marshal.ReadInt32(new IntPtr(Pl + bases[bestB] + (long)i * bestS + bestO)); }
-                    catch (Exception) { break; }
                     if (i > 0) sb.Append(",");
-                    sb.Append(i).Append(":").Append(v);
-                    inner.Add((FanZhong)v);
+                    sb.Append(i).Append(":").Append(bestVals[i]);
                 }
                 sb.Append("]");
                 Diag(sb.ToString());
             }
-            if (inner.Count == 0 || inner.Count < n)
-            {
-                int stride = bestS;
-                long p = Pl + 0x10;
-                for (int i = 0; i < n && inner.Count < n; i++)
-                {
-                    int v = -1;
-                    if (stride >= 12)
-                    {
-                        try { v = Marshal.ReadInt32(new IntPtr(p + (long)i * stride + 8)); } catch (Exception) { }
-                    }
-                    if (v < 0)
-                        inner.Add(slots[i].value);
-                    else
-                        inner.Add((FanZhong)v);
-                }
-            }
+            return inner.Count == n;
         }
 
         private static void DumpSlotsRaw(HashSet<FanZhong> set)
         {
+            if (!DebugEnabled) return;
             try
             {
                 var slots = set._slots;
@@ -597,9 +659,13 @@ namespace ScorePreview
     [HarmonyPatch(typeof(PlayerPipeline), nameof(PlayerPipeline.OnProcessTingResult))]
     internal static class TingHookPatch
     {
+        private static readonly System.Diagnostics.Stopwatch _sw = new System.Diagnostics.Stopwatch();
+
         private static void Prefix(IReadOnlyDictionary<PaiMianPayload, IReadOnlyList<HuResult>> huResults)
         {
             TingSnap.Calls++;
+            bool timed = ScoreHud.DebugEnabled;
+            if (timed) { _sw.Reset(); _sw.Start(); }
             try
             {
                 string fail = "";
@@ -623,6 +689,15 @@ namespace ScorePreview
             catch (Exception e)
             {
                 TingSnap.LastErr = "ex: " + e;
+            }
+            finally
+            {
+                if (timed)
+                {
+                    _sw.Stop();
+                    ScoreHud.Log?.LogInfo("[diag] Comp.Try " + _sw.Elapsed.TotalMilliseconds.ToString("0.0")
+                        + "ms calls=" + TingSnap.Calls + " hits=" + TingSnap.Hits);
+                }
             }
         }
     }

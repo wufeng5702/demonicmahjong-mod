@@ -1,21 +1,21 @@
 using BepInEx;
 using BepInEx.Unity.IL2CPP;
-using System.Collections.Generic;
-using Shared;
 
 namespace SLMenuTrigger
 {
     [BepInPlugin(PluginInfo.GUID, PluginInfo.Name, GitVersion.Version)]
     public class Plugin : BasePlugin
     {
-        public new static BepInEx.Logging.ManualLogSource Log;
+        // 静态访问点（MenuTriggerScript 需要从非实例上下文打日志）；刻意不叫 Log，避免隐藏基类成员
+        public static BepInEx.Logging.ManualLogSource Logger;
 
         public static bool Enabled = true;
 
         public override void Load()
         {
-            Log = base.Log;
+            Logger = Log;
             AddComponent<MenuTriggerScript>();
+            Log.LogInfo($"[{PluginInfo.Name}] v{GitVersion.Version} loaded");
         }
     }
 

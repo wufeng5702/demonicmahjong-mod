@@ -12,7 +12,7 @@
     <ImplicitUsings>disable</ImplicitUsings>
     <RootNamespace>SLMenuTrigger</RootNamespace>
     <AssemblyName>SLMenuTrigger</AssemblyName>
-    <Version>0.1.0</Version>
+    <Version>0.3.2</Version>
     <OutputType>Library</OutputType>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
   </PropertyGroup>

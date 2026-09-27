@@ -85,7 +85,7 @@ namespace AutoContinue
                 string continueText = "";
                 foreach (var item in buttonList)
                 {
-                    if (Normalize(item.text) == "继续")
+                    if (UiText.Normalize(item.text) == "继续")
                     {
                         continueBtn = item.btn;
                         continueText = item.text;
@@ -106,7 +106,7 @@ namespace AutoContinue
             {
                 foreach (var item in buttonList)
                 {
-                    if (Normalize(item.text) == "继续")
+                    if (UiText.Normalize(item.text) == "继续")
                     {
                         // 使用统一的结算判定，如果是结算按钮则跳过（无论 result_enabled 是否开启）
                         if (IsSettlementButton(item.btn, buttonList))
@@ -197,21 +197,6 @@ namespace AutoContinue
                     sb.Append(texts[i].m_text);
             }
             return sb.ToString().Trim();
-        }
-
-        private static string Normalize(string s)
-        {
-            if (s == null) return "";
-            var sb = new System.Text.StringBuilder();
-            for (int i = 0; i < s.Length; i++)
-            {
-                char c = s[i];
-                if (c == ' ' || c == '\n' || c == '\t' || c == '\r'
-                    || c == '【' || c == '】' || c == '『' || c == '』' || c == '<')
-                    continue;
-                sb.Append(c);
-            }
-            return sb.ToString();
         }
 
         private void Click(Button b, Kind kind, string info)

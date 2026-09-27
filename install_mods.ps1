@@ -42,13 +42,25 @@ $script:BepInExTargetBuild = 785
 $script:BepInExTargetLabel = "be.785"
 $script:BepInExDownloadUrl = "https://builds.bepinex.dev/projects/bepinex_be/785/BepInEx-Unity.IL2CPP-win-x64-6.0.0-be.785%2B6abdba4.zip"
 $script:BepInExZipName = "BepInEx-Unity.IL2CPP-win-x64-6.0.0-be.785+6abdba4.zip"
+# 升级 BepInExTargetBuild / 换 URL 时必须同步更新
+$script:BepInExZipSha256 = "2a7cbf74d26abe4765c3e662db1721b923bac39849ebfef2ca5dc7de7e2d9b7f"
 
 if ($u) { $Uninstall = $true }
-if ($Uninstall) {
-    # 这里强制走卸载流程
+
+# 交互判定：stdin 被重定向（CI / 管道）时绝不能 Read-Host；
+# 带 -Mods 的批处理调用也不该在结束时停下来等回车（README 承诺的非交互用法）。
+$script:IsInteractive = -not [Console]::IsInputRedirected
+$script:UsedMenu = $false          # 只有走过 Ask-Mods 才在结束时 pause
+
+function Read-Input([string]$prompt) {
+    # 非交互时返回空串，由调用方走默认/取消分支，绝不阻塞
+    if (-not $script:IsInteractive) { return "" }
+    return (Read-Host $prompt)
 }
-elseif ($Mods -eq "" -and $GameDir -ne "") {
-    # 无提示模式下允许指定目录
+
+function Pause-Exit([int]$code = 0) {
+    if ($script:IsInteractive -and $script:UsedMenu) { Read-Host "按回车退出" | Out-Null }
+    exit $code
 }
 
 # 仓库存档：id / 项目目录 / dll 名 / 说明
@@ -111,7 +123,7 @@ function Resolve-GameDir {
         Write-Host "自动识别游戏目录: $auto" -ForegroundColor Green
         return $auto
     }
-    $manual = Read-Host "未找到 Steam 安装，请输入游戏目录（或回车取消）"
+    $manual = Read-Input "未找到 Steam 安装，请输入游戏目录（或回车取消）"
     if ([string]::IsNullOrWhiteSpace($manual)) { return $null }
     if (-not (Test-IsGameDir $manual)) { throw "目录不是游戏目录: $manual" }
     return $manual
@@ -124,6 +136,8 @@ function Ask-Mods {
         Write-Host ("  [{0}] {1}  ——  {2}" -f $m.Id, $m.Project, $m.Desc)
     }
     Write-Host "  [0] 取消"
+    if (-not $script:IsInteractive) { return @() }
+    $script:UsedMenu = $true
     $raw = Read-Host "输入编号（逗号/空格分隔，如 1,2）"
     $sel = @()
     foreach ($tok in ($raw -split "[,\s，]+")) {
@@ -144,26 +158,6 @@ function Parse-Mods([string]$s) {
         }
     }
     return $sel
-}
-
-function Get-WithRetry([string]$url) {
-    try {
-        return Invoke-RestMethod -Headers $script:headers -Uri $url -TimeoutSec 60
-    }
-    catch {
-        Write-Host "  GitHub 直连失败（$($_.Exception.Message)），改走镜像 https://gh.ddlc.top/ ..." -ForegroundColor DarkGray
-        return Invoke-RestMethod -Headers $script:headers -Uri ("https://gh.ddlc.top/" + $url) -TimeoutSec 120
-    }
-}
-
-function Save-WithRetry([string]$url, [string]$out) {
-    try {
-        Invoke-WebRequest -Headers $script:headers -Uri $url -OutFile $out -TimeoutSec 300
-    }
-    catch {
-        Write-Host "  下载失败（$($_.Exception.Message)），改走镜像 https://gh.ddlc.top/ ..." -ForegroundColor DarkGray
-        Invoke-WebRequest -Headers $script:headers -Uri ("https://gh.ddlc.top/" + $url) -OutFile $out -TimeoutSec 600
-    }
 }
 
 # 隐藏 BepInEx 控制台
@@ -258,7 +252,9 @@ function Get-BepInExVersion([string]$game) {
 
 # 合并复制：目标目录已存在时 Copy-Item 会把源目录整个套进去（game\BepInEx\BepInEx），
 # 所以逐层复制“内容”，只覆盖同名文件，不新增嵌套层。
+# 源必须先确认存在：否则会走进“源是文件”分支，先把目标目录删掉再 Copy 失败 → 丢用户数据。
 function Copy-TreeMerge([string]$src, [string]$dst) {
+    if (-not (Test-Path -LiteralPath $src)) { throw "复制源不存在，拒绝改动目标: $src" }
     if (Test-Path -LiteralPath $src -PathType Container) {
         if (-not (Test-Path -LiteralPath $dst)) { New-Item -ItemType Directory -Path $dst -Force | Out-Null }
         foreach ($item in Get-ChildItem -LiteralPath $src -Force) {
@@ -290,7 +286,7 @@ function Install-BepInEx([string]$game) {
         else {
             Write-Host "[依赖] 已装 BepInEx $label，低于目标 $script:BepInExTargetLabel。" -ForegroundColor Yellow
         }
-        $ans = Read-Host "是否下载并覆盖升级到 $script:BepInExTargetLabel？（仅覆盖框架文件，保留 config/plugins/interop）[y/N]"
+        $ans = Read-Input "是否下载并覆盖升级到 $script:BepInExTargetLabel？（仅覆盖框架文件，保留 config/plugins/interop）[y/N]"
         # 正向匹配 y：Read-Host 无输入时返回 AutomationNull，-notmatch 会误判成假（默认必须是“不升级”）
         if ([string]$ans -match '^[yY]') {
             $upgrade = $true
@@ -313,7 +309,8 @@ function Install-BepInEx([string]$game) {
     $downloadUrl = $script:BepInExDownloadUrl
     $zipName = $script:BepInExZipName
 
-    $tmp = Join-Path $env:TEMP "bepinex_download.zip"
+    # 唯一临时文件名：固定名会被并发运行/上次残留干扰
+    $tmp = Join-Path $env:TEMP ("bepinex_dl_" + [Guid]::NewGuid().ToString("N") + ".zip")
     $tmpDir = Join-Path $env:TEMP ("bepinex_ex_" + [Guid]::NewGuid().ToString("N"))
 
     Write-Host "  下载 $zipName" -ForegroundColor DarkGray
@@ -321,8 +318,23 @@ function Install-BepInEx([string]$game) {
         [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
         Invoke-WebRequest -Uri $downloadUrl -OutFile $tmp -TimeoutSec 300 -UserAgent "demonic-mahjong-mod-installer" -UseBasicParsing
 
+        # 供应链校验：winhttp.dll 是 doorstop 注入器，会加载进游戏进程，必须验签后再解压使用
+        $actual = (Get-FileHash -LiteralPath $tmp -Algorithm SHA256).Hash.ToLowerInvariant()
+        if ($actual -ne $script:BepInExZipSha256) {
+            throw "BepInEx zip SHA256 校验失败`n  期望: $($script:BepInExZipSha256)`n  实际: $actual"
+        }
+
         New-Item -ItemType Directory -Path $tmpDir -Force | Out-Null
         Expand-Archive -Path $tmp -DestinationPath $tmpDir -Force
+
+        # 先校验解压产物，再动现有安装：下面的升级路径会删 core/patchers
+        $srcBep = Join-Path $tmpDir "BepInEx"
+        if (-not (Test-Path -LiteralPath $srcBep -PathType Container)) {
+            throw "压缩包内缺少 BepInEx\ 目录（结构已变？），拒绝改动现有安装"
+        }
+        if (-not (Test-Path (Join-Path $srcBep "core\BepInEx.Core.dll"))) {
+            throw "压缩包内缺少 BepInEx\core\BepInEx.Core.dll，拒绝改动现有安装"
+        }
 
         $dstBep = Join-Path $game "BepInEx"
         if ($upgrade) {
@@ -393,6 +405,22 @@ function Test-DotnetSdk {
         return ($list.Count -gt 0)
     }
     catch { return $false }
+}
+
+# 调用外部编译器并收集全部输出。
+# 必须临时把 $ErrorActionPreference 降为 Continue：PS 5.1 下 native 命令的 2>&1 会把 stderr 行
+# 变成 ErrorRecord，在 Stop 模式下直接抛异常、把真正的编译错误冲掉。
+function Invoke-Tool([string]$exe, [string[]]$argList) {
+    $eap = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $lines = @(& $exe @argList 2>&1 | ForEach-Object { "$_" })
+        return [pscustomobject]@{ Code = $LASTEXITCODE; Lines = $lines }
+    }
+    catch {
+        return [pscustomobject]@{ Code = -1; Lines = @("$($_.Exception.Message)") }
+    }
+    finally { $ErrorActionPreference = $eap }
 }
 
 # 解析 csproj（唯一事实来源）：引用、源码、语言特性 —— 捆绑 csc 的入参都从这里来
@@ -503,14 +531,12 @@ using System.Reflection;
     [System.IO.File]::WriteAllLines($rsp, $lines, (New-Object System.Text.UTF8Encoding $true))
 
     Write-Host "  用包内 csc 编译（$($info.Sources.Count) 源文件，$($info.References.Count) 引用）..." -ForegroundColor DarkGray
-    try { $output = (& $bc.Csc -noconfig "@$rsp" 2>&1) | ForEach-Object { $_.ToString() } }
-    catch { $output = @("$($_.Exception.Message)") }
-    $code = $LASTEXITCODE
-    foreach ($line in $output) {
+    $r = Invoke-Tool $bc.Csc @('-noconfig', "@$rsp")
+    foreach ($line in $r.Lines) {
         if ($line -match 'error') { Write-Host "  $line" -ForegroundColor Red }
         elseif ($line -match 'warning') { Write-Host "  $line" -ForegroundColor DarkGray }
     }
-    if ($code -ne 0) { throw "csc 编译失败（exit $code）" }
+    if ($r.Code -ne 0) { throw "csc 编译失败（exit $($r.Code)）" }
     if (-not (Test-Path $outDll)) { throw "csc 未生成产物: $outDll" }
 }
 
@@ -529,12 +555,18 @@ function Publish-Mod($mod, [string]$game) {
 
     if ($mode -eq 'sdk') {
         try {
-            Push-Location $projDir
-            try {
-                dotnet build -c Release -p:GameDir="$game" | Out-Null
-                if ($LASTEXITCODE -ne 0) { throw "dotnet build 失败（检查 interop/ 是否已生成、.NET SDK 是否安装）" }
+            # 游戏更新导致签名变化时，用户必须看到真实 CS 错误，不能只给一句通用提示
+            $projFile = Get-ChildItem -Path $projDir -Filter *.csproj -File | Select-Object -First 1
+            if (-not $projFile) { throw "未找到 csproj: $projDir" }
+            $r = Invoke-Tool 'dotnet' @('build', '-c', 'Release', "-p:GameDir=$game", $projFile.FullName)
+            if ($r.Code -ne 0) {
+                foreach ($line in $r.Lines) {
+                    if ($line -match '\berror\b') { Write-Host "  $line" -ForegroundColor Red }
+                    elseif ($line -match '\bwarning\b') { Write-Host "  $line" -ForegroundColor DarkGray }
+                    else { Write-Host "  $line" -ForegroundColor DarkGray }
+                }
+                throw "dotnet build 失败（exit $($r.Code)，见上方编译错误；也可能是 interop/ 未生成）"
             }
-            finally { Pop-Location }
         }
         catch {
             # auto 模式下 SDK 挂了就退回包内 csc（用户机器常见：装了残 SDK / 无网络还原）
@@ -585,7 +617,10 @@ function Default-Cfg([string]$proj) {
             "yoffset: 0.1`r`n" +
             "`r`n" +
             "# HUD 字体大小`r`n" +
-            "fontsize: 24`r`n" 
+            "fontsize: 24`r`n" +
+            "`r`n" +
+            "# true = 输出 [diag]/[scene]/[deep] 诊断日志（定位读数问题时开）`r`n" +
+            "debug: false`r`n" 
         }
         "SLMenuTrigger" {
             return "# SLMenuTrigger — 低于 Boss 时自动打开菜单让玩家手动 SL（改后重启生效）`r`n" +
@@ -651,8 +686,10 @@ function Invoke-AutoGenerateInterop([string]$game) {
     }
     else {
         Write-Host "[interop] 自动生成失败或超时。可能原因：网络慢、游戏启动需 Steam、反作弊拦截等。" -ForegroundColor Yellow
-        Write-Host "  请手动启动游戏一次（等待进入主菜单后退出），然后按回车继续..." -ForegroundColor Yellow
-        Read-Host
+        if ($script:IsInteractive) {
+            Write-Host "  请手动启动游戏一次（等待进入主菜单后退出），然后按回车继续..." -ForegroundColor Yellow
+            Read-Host | Out-Null
+        }
         # 再次检查 interop 是否生成
         if (Test-Path $interopDir) {
             Write-Host "[interop] 检测到手动生成成功。" -ForegroundColor Green
@@ -665,7 +702,7 @@ function Invoke-AutoGenerateInterop([string]$game) {
     }
 }
 
-function Uninstall-Mod($mod, [string]$game, [bool]$removeBepinex) {
+function Uninstall-Mod($mod, [string]$game) {
     $plugins = Join-Path $game "BepInEx\plugins"
     foreach ($f in @($mod.Dll, $mod.Cfg)) {
         $p = Join-Path $plugins $f
@@ -677,12 +714,12 @@ function Uninstall-Mod($mod, [string]$game, [bool]$removeBepinex) {
 if ($Uninstall) {
     $sel = @()
     if ($Mods -ne "") { $sel = Parse-Mods $Mods } else { $sel = Ask-Mods }
-    if ($sel.Count -eq 0) { Write-Host "未选择任何 mod，退出。" -ForegroundColor DarkGray; Read-Host "按回车退出"; exit 0 }
+    if ($sel.Count -eq 0) { Write-Host "未选择任何 mod，退出。" -ForegroundColor DarkGray; Pause-Exit 0 }
     $game = Resolve-GameDir
-    if (-not $game) { Write-Host "未确定游戏目录，退出。" -ForegroundColor Red; Read-Host "按回车退出"; exit 1 }
-    foreach ($m in $sel) { Uninstall-Mod $m $game $RemoveBepInEx }
+    if (-not $game) { Write-Host "未确定游戏目录，退出。" -ForegroundColor Red; Pause-Exit 1 }
+    foreach ($m in $sel) { Uninstall-Mod $m $game }
     if ($RemoveBepInEx) {
-        $confirm = Read-Host "确认删除整个 BepInEx 框架与前置(winhttp/doorstop/dotnet)? [y/N]"
+        $confirm = Read-Input "确认删除整个 BepInEx 框架与前置(winhttp/doorstop/dotnet)? [y/N]"
         if ([string]$confirm -match '^y') {
             Remove-Item (Join-Path $game "BepInEx") -Recurse -Force -ErrorAction SilentlyContinue
             foreach ($f in @("winhttp.dll", "doorstop_config.ini", "dotnet")) {
@@ -692,8 +729,7 @@ if ($Uninstall) {
         }
     }
     Write-Host "卸载完成。" -ForegroundColor Green
-    Read-Host "按回车退出"
-    exit 0
+    Pause-Exit 0
 }
 
 # 安装
@@ -701,19 +737,17 @@ $sel = @()
 if ($Mods -ne "") { $sel = Parse-Mods $Mods } else { $sel = Ask-Mods }
 if ($sel.Count -eq 0) {
     Write-Host "未选择任何 mod，跳过依赖安装并退出。" -ForegroundColor DarkGray
-    Read-Host "按回车退出"
-    exit 0
+    Pause-Exit 0
 }
 Write-Host ("已选择: " + (($sel.Project) -join ", ")) -ForegroundColor Cyan
 
 $game = Resolve-GameDir
-if (-not $game) { Write-Host "未确定游戏目录，退出。" -ForegroundColor Red; Read-Host "按回车退出"; exit 1 }
+if (-not $game) { Write-Host "未确定游戏目录，退出。" -ForegroundColor Red; Pause-Exit 1 }
 
 if (-not $SkipBepInEx) {
     if (-not (Install-BepInEx $game)) {
         Write-Host "BepInEx 依赖安装失败，中止。可用 -SkipBepInEx 跳过。" -ForegroundColor Red
-        Read-Host "按回车退出"
-        exit 1
+        Pause-Exit 1
     }
 }
 else {
@@ -743,7 +777,4 @@ if ($fail.Count -gt 0) {
     Write-Host "全部安装完成。" -ForegroundColor Green
 }
 
-# 隐藏 BepInEx 控制台（无论是否新装）
-Disable-Console $game
-
-Read-Host "按回车退出"
+Pause-Exit 0
