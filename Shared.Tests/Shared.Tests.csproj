@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- 纯函数单元测试：只覆盖 Shared/ 里不依赖 Unity/interop 的部分。
+       三个 mod 工程需要游戏 interop 才能编译，不进这个测试。 -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>10</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <RootNamespace>Shared.Tests</RootNamespace>
+    <AssemblyName>Shared.Tests</AssemblyName>
+    <IsPackable>false</IsPackable>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 列举而非 glob：TransformPath 依赖 UnityEngine，GitVersion 是编译期注入的版本串 -->
+    <Compile Include="..\Shared\NumberParser.cs" />
+    <Compile Include="..\Shared\StringTruncator.cs" />
+    <Compile Include="..\Shared\YamlConfig.cs" />
+    <Compile Include="..\Shared\FanTextParser.cs" />
+    <Compile Include="..\Shared\ScoreFormula.cs" />
+    <Compile Include="..\Shared\UiText.cs" />
+  </ItemGroup>
+
+</Project>

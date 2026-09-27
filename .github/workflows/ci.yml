@@ -1,0 +1,29 @@
+name: CI
+
+# 三个 mod 需要游戏 interop 才能编译，所以 CI 只跑纯函数单测。
+# 本地/发版前同一条命令：dotnet test Shared.Tests/Shared.Tests.csproj
+
+on:
+    push:
+        branches:
+            - main
+            - master
+    pull_request:
+
+permissions:
+    contents: read
+
+jobs:
+    test:
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v7
+
+            - name: Setup .NET
+              uses: actions/setup-dotnet@v4
+              with:
+                  dotnet-version: 8.0.x
+
+            - name: Run unit tests
+              run: dotnet test Shared.Tests/Shared.Tests.csproj -c Release --nologo

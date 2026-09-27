@@ -18,17 +18,35 @@ jobs:
             - name: Checkout code
               uses: actions/checkout@v7
 
+            # 版本唯一事实来源 = git tag；GitVersion.cs（插件显示版本）与三个 csproj 的
+            # <Version>（AssemblyVersion 来源）一起改，避免两套版本号漂移。
             - name: Write GitVersion
               run: |
-                VER="${GITHUB_REF_NAME#v}+${GITHUB_SHA::7}"
-                echo "static class GitVersion { internal const string Version = \"${VER}\"; }" > "Shared/GitVersion.cs"
+                set -e
+                VER="${GITHUB_REF_NAME#v}"
+                echo "static class GitVersion { internal const string Version = \"${VER}+${GITHUB_SHA::7}\"; }" > "Shared/GitVersion.cs"
+                for f in ScorePreview/ScorePreview.csproj AutoContinue/AutoContinue.csproj SLMenuTrigger/SLMenuTrigger.csproj; do
+                  sed -i "s|<Version>[^<]*</Version>|<Version>${VER}</Version>|" "$f"
+                done
+                grep -h "<Version>" ScorePreview/ScorePreview.csproj
 
-            # 用户机器无需 .NET SDK：把 Roslyn csc + net6.0 引用程序集塞进包里（约 19MB，不入库）
+            # 三个 mod 需要游戏 interop 才能编译，CI 只能跑纯函数单测；发版前必须全绿。
+            - name: Run unit tests
+              run: |
+                set -e
+                dotnet test Shared.Tests/Shared.Tests.csproj -c Release --nologo
+
+            # 用户机器无需 .NET SDK：把 Roslyn csc + net6.0 引用程序集塞进包里（约 19MB，不入库）。
+            # 两个 nupkg 都是最终会由用户执行的编译器，必须先验 SHA256 再解压（改版本时同步更新哈希）。
             - name: Fetch bundled compiler (Roslyn csc + net6.0 ref)
               run: |
                 set -e
+                TOOLSET_SHA256="37333f4f1e2ce55e621355d6da651dc23d4cb5f94a8f76b9478816e87f110ad9"
+                REF_SHA256="f4b66056820517ca8dc94bbc91d26b6062eeb4c17f70bd8af361cddb2c30971f"
+
                 mkdir -p tools/compiler/ref/net6.0
                 curl -sSL -o /tmp/toolset.nupkg "https://api.nuget.org/v3-flatcontainer/microsoft.net.compilers.toolset/4.8.0/microsoft.net.compilers.toolset.4.8.0.nupkg"
+                echo "$TOOLSET_SHA256  /tmp/toolset.nupkg" | sha256sum -c -
                 unzip -q /tmp/toolset.nupkg -d /tmp/toolset
                 cp /tmp/toolset/tasks/net472/csc.exe \
                    /tmp/toolset/tasks/net472/csc.exe.config \
@@ -44,6 +62,7 @@ jobs:
                    /tmp/toolset/tasks/net472/System.Runtime.CompilerServices.Unsafe.dll \
                    tools/compiler/
                 curl -sSL -o /tmp/ref.nupkg "https://api.nuget.org/v3-flatcontainer/microsoft.netcore.app.ref/6.0.36/microsoft.netcore.app.ref.6.0.36.nupkg"
+                echo "$REF_SHA256  /tmp/ref.nupkg" | sha256sum -c -
                 unzip -q /tmp/ref.nupkg -d /tmp/ref
                 cp /tmp/ref/ref/net6.0/*.dll tools/compiler/ref/net6.0/
                 cp tools/compiler-licenses/Microsoft.Net.Compilers.Toolset.txt tools/compiler/
@@ -51,8 +70,9 @@ jobs:
                 cp /tmp/ref/THIRD-PARTY-NOTICES.TXT tools/compiler/
                 ls -l tools/compiler/ | head
 
+            # bin/obj 用通配前缀排除：`bin/*` 只匹配仓库根，会把 ScorePreview/bin 等编译产物打进包里。
             - name: Create Source Zip
-              run: zip -r DemonicMahjongMod.zip . -x "*.git*" "bin/*" "obj/*"
+              run: zip -r DemonicMahjongMod.zip . -x "*.git*" "*bin/*" "*obj/*"
 
             - name: Generate SHA-256 Checksum
               run: sha256sum DemonicMahjongMod.zip > DemonicMahjongMod.zip.sha256
