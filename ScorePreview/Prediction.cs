@@ -252,9 +252,17 @@ namespace ScorePreview
                 }
                 else
                 {
-                    b = D(t.Item1);
-                    f = D(t.Item2);
-                    m = D(t.Item3);
+                    try
+                    {
+                        b = D(t.Item1);
+                        f = D(t.Item2);
+                        m = D(t.Item3);
+                    }
+                    catch (Exception e)
+                    {
+                        failMsg = "decimal-undecodable j=" + j + " " + First(e.Message);
+                        continue;
+                    }
                 }
 
                 if (!found || f < minFan)
@@ -411,6 +419,11 @@ namespace ScorePreview
                     int w2 = Marshal.ReadInt32(p, 8);
                     int w3 = Marshal.ReadInt32(p, 12);
                     wins[i] = TryDecode(w2, w3, w1, w0);
+                    if (wins[i] < 0m)
+                    {
+                        Diag("tuple slot " + i + " undecodable, fall back to D()");
+                        return null;
+                    }
                 }
                 return wins;
             }
@@ -491,35 +504,6 @@ namespace ScorePreview
             catch (Exception) { }
 
             int fa = d.flags, b = d.hi, c = d.lo, e = d.mid;
-            int[,] perms = new int[,]
-            {
-                { c, e, fa, b },
-                { c, b, e, fa },
-                { fa, e, c, b },
-                { fa, b, c, e },
-                { e, c, b, fa },
-                { b, c, e, fa },
-                { c, b, fa, e },
-                { c, e, b, fa },
-                { e, fa, c, b },
-                { fa, c, e, b },
-                { b, e, fa, c },
-                { e, b, fa, c },
-            };
-            for (int k = 0; k < perms.GetLength(0); k++)
-            {
-                int l = perms[k, 0], m = perms[k, 1], h = perms[k, 2], f = perms[k, 3];
-                int scale = (f >> 16) & 0x7F;
-                if (scale < 0 || scale > 28) continue;
-                try
-                {
-                    var v = new decimal(l, m, h, f < 0, (byte)scale);
-                    LogDRoute("perm" + k, d);
-                    return v;
-                }
-                catch (Exception) { }
-            }
-
             throw new InvalidOperationException("Decimal undecodable lo=" + c + " mid=" + e + " hi=" + b + " flags=" + fa);
         }
 
@@ -551,6 +535,11 @@ namespace ScorePreview
             System.Collections.Generic.List<int> knownIds)
         {
             inner.Clear();
+            if (knownIds.Count == 0)
+            {
+                Diag("slotcfg: no truth set, refuse to guess n=" + set._count);
+                return false;
+            }
             var buckets = set._buckets;
             var slots = set._slots;
             if (buckets == null || slots == null || buckets.Length == 0) return false;

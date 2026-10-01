@@ -41,13 +41,27 @@ namespace Shared
                     int idx = trimmed.IndexOf(':');
                     if (idx < 0) continue;
                     string key = trimmed.Substring(0, idx).Trim();
-                    string val = trimmed.Substring(idx + 1).Trim();
+                    string val = StripInlineComment(trimmed.Substring(idx + 1).Trim());
                     result[key] = val;
                 }
             }
             catch (Exception) { }
 
             return result;
+        }
+
+        private static string StripInlineComment(string value)
+        {
+            bool inSingle = false, inDouble = false;
+            for (int i = 0; i < value.Length; i++)
+            {
+                char c = value[i];
+                if (c == '\'' && !inDouble) inSingle = !inSingle;
+                else if (c == '"' && !inSingle) inDouble = !inDouble;
+                else if (c == '#' && !inSingle && !inDouble && (i == 0 || char.IsWhiteSpace(value[i - 1])))
+                    return value.Substring(0, i).TrimEnd();
+            }
+            return value;
         }
     }
 }

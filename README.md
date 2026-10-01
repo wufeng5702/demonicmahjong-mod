@@ -9,7 +9,7 @@
 | --- |------------------------| --- |
 | **ScorePreview** | 对局左上角实时多行**分数预览**      | `计分: 底分 x 番数 x 倍率 = 预计分`；领取计分按钮 / 听牌面板 / 结算面板的实时数据 |
 | **AutoContinue** | 自动跳过「等玩家点一下」的环节        | 自动点公告【继续】进入大厅、自动点 Boss 战【点击继续】进入对局 |
-| **SLMenuTrigger** | 对局结算前分数低于 Boss 时自动暂停游戏 | 给予玩家手动执行 SL 的时间；默认开启，可通过 `SLMenuTrigger.yml` 关闭 |
+| **SLMenuTrigger** | 牌堆耗尽且对局分数低于 Boss 时自动暂停游戏 | 给予玩家手动执行 SL 的时间；默认开启，可通过 `SLMenuTrigger.yml` 关闭 |
 
 各自的详细文档见：
 - [ScorePreview/README.md](ScorePreview/README.md)
@@ -55,8 +55,9 @@ powershell -File install_mods.ps1 -Mods 1,2 -Compiler csc          :: 强制用�
 powershell -File install_mods.ps1 -Mods 1,2 -Compiler sdk          :: 强制用本机 .NET SDK
 ```
 
-> 首次装 BepInEx 后，`interop\` 要等**启动一次游戏**才会自动生成（此后才能编译 mod）：
-> 先启动游戏退出，再重跑 `install_mods.bat`。
+> 首次装 BepInEx 后，`interop\` 未生成则 mod 无法编译。脚本检测到缺失时会**自动处理**：
+> 最小化启动一次游戏，等待加载完成后自动关闭（窗口会短暂出现，属正常现象）；
+> 自动处理失败时才需要你手动启动一次游戏并退出，然后重跑 `install_mods.bat`。
 
 
 
@@ -66,9 +67,9 @@ powershell -File install_mods.ps1 -Mods 1,2 -Compiler sdk          :: 强制用�
 用 release 包一键安装不需要 SDK。
 
 ```bat
-# 1) 编译并安装（先关闭游戏，否则文件被占用）
+# 1) 编译并安装（先关闭游戏，否则文件被占用；在各 mod 目录内执行）
 taskkill //F //IM "Demonic Mahjong.exe"
-cd ScorePreview && build.bat && install.bat     # 或 cd AutoContinue
+cd ScorePreview && build.bat && install.bat     # 或 cd SLMenuTrigger / cd AutoContinue
 ```
 
 `build.bat` / `install.bat` 从仓库根 `.env`（本地文件，不入库）读取 `DEMONIC_MAHJONG_DIR`，

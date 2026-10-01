@@ -9,8 +9,8 @@
 
 | Mod | 功能 | 关键文件 |
 |-----|------|----------|
-| **ScorePreview** | 左上角 IMGUI 两行 HUD：`计分:` 镜像结算 / `和牌:` 听牌预测 | `ScoreHud.cs` / `Prediction.cs` |
-| **SLMenuTrigger** | 分数低于 Boss 时自动暂停游戏，给玩家手动 SL 时间 | `SLMenuTrigger.cs` / `Plugin.cs` |
+| **ScorePreview** | 左上角 IMGUI 四行 HUD：`计分:` 镜像结算 / `和牌1/2/3:` 听牌预测 | `ScoreHud.cs` / `Prediction.cs` |
+| **SLMenuTrigger** | 牌堆耗尽且分数低于 Boss 时自动暂停游戏，给玩家手动 SL 时间 | `SLMenuTrigger.cs` / `Plugin.cs` |
 | **AutoContinue** | 自动跳过公告【继续】与对局【点击继续】 | `AutoSkip.cs` |
 
 共享工具库在 `Shared/`（`StringTruncator` / `NumberParser` / `TransformPath` / `YamlConfig` /
@@ -60,11 +60,12 @@ mod/
 #    全部由 Get-CsprojInfo 从 csproj 解析，csc 用 rsp 传参（-noconfig 必须写在命令行、ref 路径
 #    用正斜杠+引号），另生成 AssemblyInfo.generated.cs 对齐 csproj 的 AssemblyVersion。
 # 2) 手动编译/安装（需 .NET SDK；用户机器不装 SDK 也能装 mod，见上面 -Compiler）
-.\build.bat                 # 或 dotnet build -c Release（编译物在 bin\Release\）
+cd ScorePreview
+.\build.bat                 # 或 dotnet build -c Release（编译物在 bin\Release\；三个 mod 目录各有一份）
 
 # 3) 安装（必须先关游戏，否则"另一个程序正在使用此文件"）
 taskkill //F //IM "Demonic Mahjong.exe"   # exe 名带空格！勿用错名
-.\install.bat               # 拷贝到 游戏\BepInEx\plugins\
+.\install.bat               # 拷贝到 游戏\BepInEx\plugins\（根目录没有这两个 bat，必须在 mod 目录内执行）
 
 # 4) 纯函数单元测试（改 Shared/ 后必跑；不需要游戏目录）
 dotnet test Shared.Tests/Shared.Tests.csproj
@@ -93,7 +94,10 @@ grep -aE "ScorePreview|SLMenuTrigger|AutoContinue|ting hook|Error" "%DEMONIC_MAH
 确认 `BepInEx\` + `BepInEx\core\BepInEx.Core.dll` 存在才允许动目标目录——否则坏包会把已有
 安装改坏。GitHub 镜像代理（如 gh.ddlc.top）只反代 github.com，对 `builds.bepinex.dev` /
 `api.nuget.org` 无意义，不要依赖。首次装 BepInEx 后 interop/ 未生成，mod 编译必失败 →
-先启动一次游戏（或用同版本开发拷贝的 `BepInEx\interop` + `unity-libs` + `config` 补齐），再跑脚本。
+`install_mods.ps1` 检测到缺失时会**自动生成**：最小化启动游戏，等日志出现
+`Chainloader initialized` 后强杀进程（`Invoke-AutoGenerateInterop`；超时/Steam 拦截时会退化为
+提示手动启动一次游戏再继续）。也可手动启动一次游戏，或用同版本开发拷贝的 `BepInEx\interop` +
+`unity-libs` + `config` 补齐。
 
 捆绑编译器（release.yml 的 `Fetch bundled compiler` 步骤，打包前执行，产物只进 zip 不入库）：
 - `microsoft.net.compilers.toolset` 4.8.0 → 只留 `tasks/net472/` 的 csc.exe + csc.exe.config +
@@ -164,8 +168,9 @@ grep -aE "ScorePreview|SLMenuTrigger|AutoContinue|ting hook|Error" "%DEMONIC_MAH
 10. **HashSet.Slot 原生布局漂移**：interop `Slot.value` 偶尔读到脏值（如 854339984）。
     `FillFromSet` 扫 `base∈{0x18,0x10} × stride∈{12,16} × valOff∈{0,4,8,12}`，
     **用 `KnownFanIds`（`_fanZhongPayloadList` 的 id 集合）做真值校验**：一个布局读出的 n 个值
-    必须全部落在集合内才算通过，按 distinct 值数选最优（stride 大者优先）。全部验不过 →
-    返回 false，调用方**跳过该胡型**（宁可不出预测也不显示错分数）。`slotcfg … verified=…`
+    必须全部落在集合内才算通过，按 distinct 值数选最优（stride 大者优先）。真值集合本身为空
+    （payload 列表未填充的时机窗口）或全部验不过 → 返回 false，调用方**跳过该胡型**
+    （宁可不出预测也不显示错分数）。`slotcfg … verified=…`
     进日志，`debug=false` 时只留一行 `no layout validated`。
 11. **结算数字动画**：`TweenMultiplyNumbersNumber` 改的是文本，动画中 0/1234567/中间值
     （如 `150 x 0 x 2.81`）。计分行用**稳定后的文本**（含 `sprite name` + ReadyNum 才采信），
@@ -184,7 +189,8 @@ grep -aE "ScorePreview|SLMenuTrigger|AutoContinue|ting hook|Error" "%DEMONIC_MAH
 ```powershell
 dotnet build -c Release                                          # 编译插件（各 mod 目录）
 dotnet test Shared.Tests/Shared.Tests.csproj                     # 纯函数单测（任何目录都能跑）
-.\build.bat / .\install.bat                                      # 快捷构建/安装（读 .env 游戏目录）
+.\build.bat / .\install.bat                                      # 快捷构建/安装（在各 mod 目录内执行，读 .env 游戏目录；
+                                                                 #  根目录没有这两个入口，只有 install_mods.bat/.ps1）
    （各 mod 目录内的 build.bat/install.bat 只是调 ..\tools\modbat\build.bat / install.bat 的薄包装）
 dotnet run --no-build -c Release -- "<interop.dll>" "<类型全名>"   # mod\tools\dumptypes 探查类型
 taskkill //F //IM "Demonic Mahjong.exe"                          # 关游戏（带空格 exe 名）

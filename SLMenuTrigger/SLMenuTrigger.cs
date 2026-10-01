@@ -19,6 +19,8 @@ namespace SLMenuTrigger
         // ========== 缓存字段 ==========
         private TMP_Text _deckTextCache;
         private TMP_Text _bossDeckTextCache;
+        private TMP_Text _playerScoreCache;
+        private TMP_Text _aiScoreCache;
 
         // ========== 状态字段 ==========
         private int _fontSize = 24;
@@ -149,9 +151,9 @@ namespace SLMenuTrigger
         // ========== 等待过程中检查总分 ==========
         private void CheckScoresDuringWait()
         {
-            // 每次强制重新查找，不依赖缓存
-            long playerScore = GetScoreDirect(PlayerPath);
-            long aiScore = GetScoreDirect(AiPath);
+            // 缓存分数 TMP 组件，文本仍在同一组件上变化；组件失效（销毁/失活）才重找
+            long playerScore = GetScoreCached(ref _playerScoreCache, PlayerPath);
+            long aiScore = GetScoreCached(ref _aiScoreCache, AiPath);
 
             // 如果两者都不是占位符，说明 UI 已更新
             bool playerValid = (playerScore != PlaceholderScore);
@@ -211,24 +213,18 @@ namespace SLMenuTrigger
             // 若未满足条件（有效且未超时），则继续等待，不做任何操作
         }
 
-        // ========== 直接读取分数（强制刷新） ==========
-        private long GetScoreDirect(string path)
+        // ========== 直接读取分数（缓存组件，失效才重找） ==========
+        private long GetScoreCached(ref TMP_Text cache, string path)
         {
-            var texts = FindObjectsOfType<TMP_Text>(true);
-            foreach (var t in texts)
+            if (cache == null || !cache.gameObject.activeInHierarchy)
+                cache = FindTextByPath(path);
+            if (cache == null || string.IsNullOrEmpty(cache.m_text)) return -1;
+
+            string clean = CleanNumber(cache.m_text).Replace(",", "");
+            if (long.TryParse(clean, System.Globalization.NumberStyles.Integer,
+                System.Globalization.CultureInfo.InvariantCulture, out long val))
             {
-                if (t == null) continue;
-                string tPath = GetPath(t.transform);
-                if (tPath == path)
-                {
-                    string clean = CleanNumber(t.m_text).Replace(",", "");
-                    if (long.TryParse(clean, System.Globalization.NumberStyles.Integer,
-                        System.Globalization.CultureInfo.InvariantCulture, out long val))
-                    {
-                        return val;
-                    }
-                    return -1;
-                }
+                return val;
             }
             return -1;
         }
@@ -340,23 +336,32 @@ namespace SLMenuTrigger
 
         private void LoadConfig()
         {
-            var defaults = new Dictionary<string, string>
+            try
             {
-                ["enabled"] = "true",
-                ["fontsize"] = "24"
-            };
-            var cfg = YamlConfig.Load("SLMenuTrigger.yml", defaults);
-            if (cfg.TryGetValue("enabled", out string val))
-            {
-                if (bool.TryParse(val, out bool b))
-                    Plugin.Enabled = b;
-                else
-                    Plugin.Logger.LogWarning("Invalid enabled value, using default 'true'");
+                var defaults = new Dictionary<string, string>
+                {
+                    ["enabled"] = "true",
+                    ["fontsize"] = "24"
+                };
+                var cfg = YamlConfig.Load("SLMenuTrigger.yml", defaults);
+                if (cfg.TryGetValue("enabled", out string val))
+                {
+                    if (bool.TryParse(val, out bool b))
+                        Plugin.Enabled = b;
+                    else
+                        Plugin.Logger.LogWarning("Invalid enabled value, using default 'true'");
+                }
+                if (cfg.TryGetValue("fontsize", out string fs)
+                    && int.TryParse(fs, out int size))
+                {
+                    if (size < 8) size = 8;
+                    if (size > 96) size = 96;
+                    _fontSize = size;
+                }
             }
-            if (cfg.TryGetValue("fontsize", out string fs)
-                && int.TryParse(fs, out int size))
+            catch (Exception e)
             {
-                _fontSize = size;
+                Plugin.Logger.LogWarning("SLMenuTrigger config load failed: " + e.Message);
             }
             Plugin.Logger.LogInfo("SLMenuTrigger cfg: enabled=" + Plugin.Enabled + " fontsize=" + _fontSize);
         }

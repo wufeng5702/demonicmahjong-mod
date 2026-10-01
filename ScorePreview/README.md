@@ -27,7 +27,7 @@ debug: false    # true = 输出 [diag]/[scene]/[deep] 诊断日志（定位读�
 
 ### 关于「和牌1/2/3」的排序
 
-三条都来自**同一个**听牌钩子（`TingHookPatch` 复用游戏结算计算），结果按**预计得分升序**排列后取前三，所以：
+三条都来自**同一个**听牌钩子（`TingHookPatch` 复用游戏结算计算），结果按**番数 × 倍率 升序**排列后取前三，所以：
 
 - 显示顺序是「便宜的在上」，**不是**按番型或听牌张数排；
 - 同一局内若三条内容变了，是钩子重新算出了新结果，不是乱序；
@@ -39,7 +39,7 @@ debug: false    # true = 输出 [diag]/[scene]/[deep] 诊断日志（定位读�
 |----------|----------|------|
 | `FanNum`（听牌面板） | UI TMP 文本扫描 | 和牌番数兜底 |
 | `TingHookPatch`（听牌钩子） | Harmony patch `PlayerPipeline.OnProcessTingResult` | 和牌底分/番数/倍率精确值 |
-| `JiFen/FenXing/ExpandedButton/Total` | UI TMP 文本扫描 | 计分番数 |
+| `Total`（祖先含 `JiFen` 的计分按钮） | UI TMP 文本扫描 | 计分番数 |
 | `PlayerRoundStatistics` | Buff 系统读取 | 底分精确值 |
 | `IndependentText` | UI TMP 文本扫描 | 实时倍率 |
 | 结算面板 | `LastSettleFactors` | 面板打开后镜像结算 |
@@ -57,6 +57,7 @@ debug: false    # true = 输出 [diag]/[scene]/[deep] 诊断日志（定位读�
 [Info :ScorePreview] Diag: uiFanMin=15 from [15,16]      # 和牌番数取自听牌面板（值变化才打一条）
 [Info :ScorePreview] Diag: jfFan=6 from [6 番]           # 计分番数取自计分按钮（值变化才打一条）
 [Info :ScorePreview] ting hook #3 -> fan=16 ...          # 听牌钩子命中
+[Info :ScorePreview] [settle] base=150 ... panel[...]     # 结算面板深挖（数字变化才打一条，与 debug 无关）
 [Info :ScorePreview] hud -> 计分: 150 x 6 x 2.25 = 2025 | 和牌1: ... | 和牌2: ... | 和牌3: ...
 ```
 
@@ -79,7 +80,7 @@ debug: false    # true = 输出 [diag]/[scene]/[deep] 诊断日志（定位读�
 
 - 计分行精度：底分可能从游戏 UI 文本读到 `500M` 这类缩写，等式左边会先展开成完整数字再相乘，因此显示值可能比游戏 UI 长，但与结算一致。
 - 结算数字是动画的（`TweenMultiplyNumbersNumber`）：文本会出现 0 / 中间值，计分行只在数字稳定后采信。
-- `FanZhong` 哈希集的槽位脏读：`FillFromSet` 用游戏自己的 `_fanZhongPayloadList.id` 做真值校验，验不过直接**跳过该条预测**（宁可不显示也不显示错分数），`debug` 日志里会看到 `slotcfg: no layout validated`。
+- `FanZhong` 哈希集的槽位脏读：`FillFromSet` 用游戏自己的 `_fanZhongPayloadList.id` 做真值校验，验不过直接**跳过该条预测**（宁可不显示也不显示错分数），`debug` 日志里会看到 `slotcfg: no layout validated`；真值列表本身还没填充（时机窗口）时同样跳过。
 
 ## 技术说明（改代码必读）
 

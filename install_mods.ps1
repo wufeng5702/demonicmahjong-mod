@@ -593,6 +593,9 @@ function Publish-Mod($mod, [string]$game) {
     Write-Host ("[mod] 安装完成: {0} -> plugins\{1}" -f $mod.Project, $mod.Dll) -ForegroundColor Green
 }
 
+# 默认配置模板：此处的键/默认值必须与各 mod 源码里 YamlConfig.Load 的 defaults 字典
+# （ScoreHud.LoadConfig / MenuTriggerScript.LoadConfig / AutoSkip.LoadConfig）保持一致，
+# 改任何一边都要同步另一边（运行时以 mod 内 defaults 为准，本函数只用于首次生成带注释的文件）。
 function Default-Cfg([string]$proj) {
     switch ($proj) {
         "AutoContinue" {
@@ -623,7 +626,7 @@ function Default-Cfg([string]$proj) {
             "debug: false`r`n" 
         }
         "SLMenuTrigger" {
-            return "# SLMenuTrigger — 低于 Boss 时自动打开菜单让玩家手动 SL（改后重启生效）`r`n" +
+            return "# SLMenuTrigger — 牌堆耗尽且分数低于 Boss 时自动暂停，方便手动 SL（改后重启生效）`r`n" +
             "`r`n" +
             "enabled: true`r`n" +
             "`r`n" +
@@ -649,8 +652,8 @@ function Invoke-AutoGenerateInterop([string]$game) {
     }
 
     $log = Join-Path $game "BepInEx\LogOutput.log"
-    # 备份旧日志（如果存在）
-    if (Test-Path $log) { Remove-Item $log -Force }
+    # 移走旧日志（保留一份 .prev），确保后面的 -Tail 检测只看本次启动的输出
+    if (Test-Path $log) { Move-Item $log (Join-Path $game "BepInEx\LogOutput.prev.log") -Force }
 
     Write-Host "  启动游戏（窗口将最小化，完成后自动关闭）..." -ForegroundColor DarkGray
     $proc = Start-Process -FilePath $exe -PassThru -WindowStyle Minimized

@@ -243,7 +243,7 @@ namespace AutoContinue
             }
             catch (Exception e)
             {
-                Log?.LogInfo("AutoContinue: cfg read failed: " + FirstLine(e.ToString()));
+                Log?.LogWarning("AutoContinue: cfg read failed: " + FirstLine(e.ToString()));
             }
             Log?.LogInfo("AutoContinue cfg: announce=" + _announceEnabled + "/d=" + _announceDelay
                 + " battle=" + _battleEnabled + "/d=" + _battleDelay

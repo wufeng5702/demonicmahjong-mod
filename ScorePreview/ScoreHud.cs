@@ -9,10 +9,10 @@ using Shared;
 namespace ScorePreview
 {
     /// <summary>
-    /// IMGUI 悬浮面板。显示预计得分（底分 x 番数 x 倍率）。
-    /// 优先读取游戏自己的计分预览面板 PlayerHuPanel 的文本（权威，尚未解析格式前先原样显示），
-    /// 其次用 Harmony 钩子（PlayerPipeline.OnProcessTingResult）算好的听牌预测，
-    /// 兜底尝试读手牌 CanHu。
+    /// IMGUI 悬浮面板（四行：计分 + 和牌1/2/3）。
+    /// 计分行解析 HuPaiJieSuan 的稳定结算数字并镜像「底分 x 番数 x 倍率 = 总分」；
+    /// 和牌行用 Harmony 钩子（PlayerPipeline.OnProcessTingResult）算好的听牌预测，
+    /// 兜底依次尝试听牌面板 FanNum、手牌 CanHu。
     /// </summary>
     public class ScoreHud : MonoBehaviour
     {
@@ -51,19 +51,6 @@ namespace ScorePreview
             }
             return _tmpCache;
         }
-
-        /// <summary>按 gameObject.name 查找缓存的 TMP_Text。</summary>
-        private static TMPro.TMP_Text FindTmpByName(string name)
-        {
-            var arr = CachedTMPs();
-            for (int i = 0; i < arr.Length; i++)
-            {
-                if (arr[i] != null && arr[i].gameObject != null && arr[i].gameObject.name == name)
-                    return arr[i];
-            }
-            return null;
-        }
-
 
         private void Awake()
         {
@@ -105,6 +92,8 @@ namespace ScorePreview
                 if (cfg.TryGetValue("fontsize", out string fval)
                     && int.TryParse(fval, out int fs))
                 {
+                    if (fs < 8) fs = 8;
+                    if (fs > 96) fs = 96;
                     _fontSize = fs;
                 }
                 if (cfg.TryGetValue("debug", out string dval)
@@ -113,7 +102,10 @@ namespace ScorePreview
                     DebugEnabled = dbg;
                 }
             }
-            catch (Exception) { }
+            catch (Exception e)
+            {
+                Log?.LogWarning("ScorePreview config load failed: " + e.Message);
+            }
             Log?.LogInfo("ScoreHud active yoffset=" + _yOffsetRatio.ToString(CultureInfo.InvariantCulture)
                 + " fontsize=" + _fontSize + " debug=" + DebugEnabled);
         }
@@ -305,11 +297,6 @@ namespace ScorePreview
             }
             return;
         }
-
-
-        /// <summary>读游戏计分预览面板 PlayerHuPanel 的四个数字文本；任一为空则视为未显示。
-        /// 返回格式化 HUD 文本；未知格式时原样拼接，方便对照。
-        /// </summary>
 
         private float _settleWatchUntil;
         private float _nextSettleDump;

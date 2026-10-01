@@ -224,5 +224,29 @@ namespace Shared.Tests
             Assert.Equal("12", cfg["fontsize"]);
             Assert.Equal("true", cfg["enabled"]);
         }
+
+        [Fact]
+        public void Load_strips_inline_comment_after_value()
+        {
+            File.WriteAllText(Path.Combine(_dir, "Mod.yml"),
+                "enabled: false   # 是否启用（README 示例写法）\nfontsize: 48\t# 字体大小\n");
+
+            var cfg = YamlConfig.Load("Mod.yml", Defaults(), _dir);
+
+            Assert.Equal("false", cfg["enabled"]);
+            Assert.Equal("48", cfg["fontsize"]);
+        }
+
+        [Fact]
+        public void Load_keeps_hash_that_is_not_a_comment()
+        {
+            File.WriteAllText(Path.Combine(_dir, "Mod.yml"),
+                "enabled: true#glued\nfontsize: \"24 # not comment\"\n");
+
+            var cfg = YamlConfig.Load("Mod.yml", Defaults(), _dir);
+
+            Assert.Equal("true#glued", cfg["enabled"]);
+            Assert.Equal("\"24 # not comment\"", cfg["fontsize"]);
+        }
     }
 }
