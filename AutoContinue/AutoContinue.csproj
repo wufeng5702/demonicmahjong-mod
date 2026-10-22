@@ -13,7 +13,7 @@
     <ImplicitUsings>disable</ImplicitUsings>
     <RootNamespace>AutoContinue</RootNamespace>
     <AssemblyName>AutoContinue</AssemblyName>
-    <Version>0.3.2</Version>
+    <Version>0.4.0</Version>
     <OutputType>Library</OutputType>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
   </PropertyGroup>
@@ -34,8 +34,28 @@
     <Reference Include="Il2Cppmscorlib" Private="false">
       <HintPath>$(GameDir)\BepInEx\interop\Il2Cppmscorlib.dll</HintPath>
     </Reference>
+    <!-- 灵俑演出动画：MapPlayeCharacteAnimCtrl / LingYongTimeLineController 等 -->
+    <Reference Include="MaJiang" Private="false">
+      <HintPath>$(GameDir)\BepInEx\interop\MaJiang.dll</HintPath>
+    </Reference>
     <Reference Include="UnityEngine.CoreModule" Private="false">
       <HintPath>$(GameDir)\BepInEx\interop\UnityEngine.CoreModule.dll</HintPath>
+    </Reference>
+    <!-- PlayableDirector（灵俑演出时间轴） -->
+    <Reference Include="UnityEngine.DirectorModule" Private="false">
+      <HintPath>$(GameDir)\BepInEx\interop\UnityEngine.DirectorModule.dll</HintPath>
+    </Reference>
+    <!-- CanvasGroup（隐藏灵俑 UI 演出画面） -->
+    <Reference Include="UnityEngine.UIModule" Private="false">
+      <HintPath>$(GameDir)\BepInEx\interop\UnityEngine.UIModule.dll</HintPath>
+    </Reference>
+    <!-- Animator（灵俑模型演出） -->
+    <Reference Include="UnityEngine.AnimationModule" Private="false">
+      <HintPath>$(GameDir)\BepInEx\interop\UnityEngine.AnimationModule.dll</HintPath>
+    </Reference>
+    <!-- MapPlayeCharacteAnimCtrl 的基类 SaintsMonoBehaviour -->
+    <Reference Include="SaintsField.Runtime" Private="false">
+      <HintPath>$(GameDir)\BepInEx\interop\SaintsField.Runtime.dll</HintPath>
     </Reference>
     <!-- Button 点击对象 -->
     <Reference Include="UnityEngine.UI" Private="false">

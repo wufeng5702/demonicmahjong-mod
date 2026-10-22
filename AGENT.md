@@ -11,7 +11,7 @@
 |-----|------|----------|
 | **ScorePreview** | 左上角 IMGUI 四行 HUD：`计分:` 镜像结算 / `和牌1/2/3:` 听牌预测 | `ScoreHud.cs` / `Prediction.cs` |
 | **SLMenuTrigger** | 牌堆耗尽且分数低于 Boss 时自动暂停游戏，给玩家手动 SL 时间 | `SLMenuTrigger.cs` / `Plugin.cs` |
-| **AutoContinue** | 自动跳过公告【继续】与对局【点击继续】 | `AutoSkip.cs` |
+| **AutoContinue** | 自动跳过公告【继续】与对局【点击继续】；跳过/隐藏局外灵俑演出动画 | `AutoSkip.cs` / `LingYongAnimSkip.cs` |
 
 共享工具库在 `Shared/`（`StringTruncator` / `NumberParser` / `TransformPath` / `YamlConfig` /
 `FanTextParser` / `ScoreFormula` / `UiText` / `GitVersion`），各 `.csproj` 通过
@@ -59,6 +59,15 @@ mod/
 #    SDK 编译失败且 auto 时自动退回包内 csc。csproj 的 HintPath/LangVersion/Nullable/Version
 #    全部由 Get-CsprojInfo 从 csproj 解析，csc 用 rsp 传参（-noconfig 必须写在命令行、ref 路径
 #    用正斜杠+引号），另生成 AssemblyInfo.generated.cs 对齐 csproj 的 AssemblyVersion。
+# 1.5) Linux(Proton) 开发循环（本机无 PowerShell，install_mods.ps1 用不了，手动来）：
+#    - 编译：dotnet build -c Release -p:GameDir="$HOME/.local/share/Steam/steamapps/common/DemonicMahjong"
+#    - 安装：cp <Mod>/bin/Release/<Mod>.dll "$GAME/BepInEx/plugins/"
+#    - 启动：必须带 winhttp=n,b，否则 doorstop 不加载、BepInEx 整个不启动（见坑 17）：
+#      export WINEDLLOVERRIDES="winhttp=n,b"
+#      "$HOME/.local/share/Steam/steamapps/common/Proton - Experimental/proton" run "$GAME/Demonic Mahjong.exe"
+#    - 或用 Steam 启动（steam -applaunch 3444020），此时靠前缀注册表 DllOverrides 保证 winhttp=native
+#    - 首次装 BepInEx 要拷整个 zip（含 BepInEx\ + winhttp.dll + doorstop_config.ini + dotnet\），
+#      启动一次生成 BepInEx\interop\ 后才能编译
 # 2) 手动编译/安装（需 .NET SDK；用户机器不装 SDK 也能装 mod，见上面 -Compiler）
 cd ScorePreview
 .\build.bat                 # 或 dotnet build -c Release（编译物在 bin\Release\；三个 mod 目录各有一份）
@@ -183,6 +192,35 @@ grep -aE "ScorePreview|SLMenuTrigger|AutoContinue|ting hook|Error" "%DEMONIC_MAH
     需要 `.Replace(",","")` 后再 `long.TryParse`。
 15. **YamlConfig.Load**：接受文件名（如 `"Mod.yml"`），自动从 dll 所在目录加载。配置丢失时
     自动从 `defaults` 生成默认文件。三个 Mod 统一使用此接口。
+16. **interop 程序集是存根，别指望反编译**：`BepInEx\interop\MaJiang.dll` 由 Il2CppInterop 生成，
+    方法体只是 native 调用桩——Mono.Cecil 看不到游戏逻辑，`dumptypes --xref` 的调用图全是 0
+    （原生逻辑在 `GameAssembly.dll`）。所以游戏规则只能「运行时调游戏 API」或「人工实测」，
+    不能靠读 dll 猜。
+17. **Linux(Proton) 下 BepInEx 可能压根不启动**：Wine 默认用 builtin 的 `winhttp.dll`，
+    **忽略**游戏目录里的 doorstop 代理 → BepInEx 不注入，所有 mod 静默失效，而且
+    `BepInEx\LogOutput.log` 连时间戳都不更新（看起来像"mod 没装"）。
+    症状：游戏能玩、日志停在旧时间、插件列表里没有自己的 mod。
+    解法一：前缀里写 `HKCU\Software\Wine\DllOverrides` → `winhttp="n,b"`（对所有启动方式生效）；
+    解法二：手动启动时 `export WINEDLLOVERRIDES="winhttp=n,b"` 再 `proton run <exe>`。
+    另外 **BepInEx 6 IL2CPP 还要游戏目录下的 `dotnet/`（coreclr）**，只拷 `BepInEx\` 会不加载。
+18. **Harmony 挂 IL2CPP 方法：this 必须先被托管侧碰过**：Il2CppInterop 的 native→managed
+    跳板要把原生指针转成托管对象（`Il2CppObjectPool.Get`），对象没被托管代码访问过就抛
+    `InvalidOperationException: Handle is not initialized` → **游戏原生调用直接失败**
+    （日志刷屏 + 该方法被跳过）。ScorePreview 能挂 `PlayerPipeline` 是因为托管侧先拿到过实例。
+    结论：灵俑演出这种「this 是游戏内部 new 出来的对象」不要挂 Harmony，改纯托管轮询。
+19. **灵俑 = 小丑牌**：代码里 灵俑 ↔ `XiaoChouPai` / `XiaoChouPaiDisplay`（596 个），
+    玩家角色（孟婆/牛头/阎罗王…）才是 `XxxLingYong` 资源（`XxxLingyongTL.prefab` 是角色的时间轴）。
+    灵俑相关关键类型：
+    - `MaJiang.PlayMaJiang.XiaoChouPaiCommon.XiaoChouPaiDisplay`：`modelObj`（3D 模型）、
+      `CreateModel()`、`Init(...)`；`PlayEffect()` 是效果播放入口。
+    - `MaJiang.PlayMaJiang.XiaoChouPaiCommon.XiaoChouPaiModelEffect`：`PlaySaturation()`
+      播模型 Animator 的演出状态（纯视觉）。
+    - `MaJiang.Bag.PlayerInfoCtr`：大厅灵俑页，`_displays` = 局外灵俑显示对象列表（判局外的依据）。
+    - `MaJiang.Bag.TabPageController_LingYong` / `MaJiang.UI.Bag.TabPage_LingYong`：
+      灵俑页（槽位、销毁 `_destroyVfx` 特效、销毁按钮）。
+    - `MaJiang.GameMap.XiaoChouItemFloatInfo.Show(Vector3, XiaoChouPaiPayload)`：灵俑信息浮窗。
+    - 毕方 id 111（`BiFang`）、鹿蜀 id 166（`LuShu`），都在 `MaJiang.DataConstruct.XiaoChouPai.XiaoChouPaiPayloadList`。
+    灵俑页不在大厅常驻：大厅里 `FindObjectsOfType<XiaoChouPaiDisplay>` 为 0，打开灵俑页才有。
 
 ## 工具 / 常用命令
 

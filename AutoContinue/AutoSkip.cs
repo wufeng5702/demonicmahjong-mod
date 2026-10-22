@@ -1,7 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Globalization;
-using System.IO;
 using UnityEngine;
 using UnityEngine.UI;
 using Shared;
@@ -19,15 +17,7 @@ namespace AutoContinue
     {
         internal static BepInEx.Logging.ManualLogSource Log;
 
-        private const string CfgName = "AutoContinue.yml";
         private const float ScanInterval = 0.25f;
-
-        private bool _announceEnabled = true;
-        private float _announceDelay = 2f;
-        private bool _battleEnabled = true;
-        private float _battleDelay = 1f;
-        private bool _resultEnabled = false;
-        private float _resultDelay = 5f;
 
         private float _nextScan;
 
@@ -39,14 +29,15 @@ namespace AutoContinue
 
         private void Awake()
         {
-            LoadConfig();
+            AutoConfig.Load();
+            AutoConfig.LogSummary();
         }
 
         private void Update()
         {
             if (Time.unscaledTime < _nextScan) return;
             _nextScan = Time.unscaledTime + ScanInterval;
-            if (!_announceEnabled && !_battleEnabled && !_resultEnabled) return;
+            if (!AutoConfig.AnnounceEnabled && !AutoConfig.BattleEnabled && !AutoConfig.ResultEnabled) return;
 
             // 收集所有可见按钮及其文本
             var buttonList = new List<(Button btn, string text)>();
@@ -64,7 +55,7 @@ namespace AutoContinue
             string info = "";
 
             // 1. 战斗加载界面（文本包含“点击继续”）
-            if (_battleEnabled)
+            if (AutoConfig.BattleEnabled)
             {
                 foreach (var item in buttonList)
                 {
@@ -79,7 +70,7 @@ namespace AutoContinue
             }
 
             // 2. 结算界面：仅在启用时检测
-            if (target == null && _resultEnabled)
+            if (target == null && AutoConfig.ResultEnabled)
             {
                 Button continueBtn = null;
                 string continueText = "";
@@ -102,7 +93,7 @@ namespace AutoContinue
             }
 
             // 3. 公告界面：仅有“继续”，但必须排除结算界面
-            if (target == null && _announceEnabled)
+            if (target == null && AutoConfig.AnnounceEnabled)
             {
                 foreach (var item in buttonList)
                 {
@@ -136,9 +127,9 @@ namespace AutoContinue
 
             if (_cur != _lastTriggered || Time.unscaledTime - _lastTriggerTime > 3f)
             {
-                float delay = kind == Kind.Battle ? _battleDelay
-                    : kind == Kind.Result ? _resultDelay
-                    : _announceDelay;
+                float delay = kind == Kind.Battle ? AutoConfig.BattleDelay
+                    : kind == Kind.Result ? AutoConfig.ResultDelay
+                    : AutoConfig.AnnounceDelay;
                 if (Time.unscaledTime - _curFirstSeen >= delay)
                 {
                     Click(target, kind, info);
@@ -213,57 +204,5 @@ namespace AutoContinue
         }
 
         private static string FirstLine(string s) => StringTruncator.FirstLine(s);
-
-        private void LoadConfig()
-        {
-            try
-            {
-                var defaults = new Dictionary<string, string>
-                {
-                    ["announce_enabled"] = "true",
-                    ["announce_delay"] = "2.0",
-                    ["battle_enabled"] = "true",
-                    ["battle_delay"] = "1.0",
-                    ["result_enabled"] = "false",
-                    ["result_delay"] = "5.0"
-                };
-                var cfg = YamlConfig.Load(CfgName, defaults);
-                if (cfg.TryGetValue("announce_enabled", out string ae))
-                    _announceEnabled = ParseBool(ae, _announceEnabled);
-                if (cfg.TryGetValue("announce_delay", out string ad))
-                    _announceDelay = ParseFloat(ad, _announceDelay);
-                if (cfg.TryGetValue("battle_enabled", out string be))
-                    _battleEnabled = ParseBool(be, _battleEnabled);
-                if (cfg.TryGetValue("battle_delay", out string bd))
-                    _battleDelay = ParseFloat(bd, _battleDelay);
-                if (cfg.TryGetValue("result_enabled", out string re))
-                    _resultEnabled = ParseBool(re, _resultEnabled);
-                if (cfg.TryGetValue("result_delay", out string rd))
-                    _resultDelay = ParseFloat(rd, _resultDelay);
-            }
-            catch (Exception e)
-            {
-                Log?.LogWarning("AutoContinue: cfg read failed: " + FirstLine(e.ToString()));
-            }
-            Log?.LogInfo("AutoContinue cfg: announce=" + _announceEnabled + "/d=" + _announceDelay
-                + " battle=" + _battleEnabled + "/d=" + _battleDelay
-                + " result=" + _resultEnabled + "/d=" + _resultDelay);
-        }
-
-        private static bool ParseBool(string v, bool d)
-        {
-            if (string.Equals(v, "true", StringComparison.OrdinalIgnoreCase)) return true;
-            if (string.Equals(v, "false", StringComparison.OrdinalIgnoreCase)) return false;
-            if (v == "1") return true;
-            if (v == "0") return false;
-            return d;
-        }
-
-        private static float ParseFloat(string v, float d)
-        {
-            if (float.TryParse(v, NumberStyles.Float, CultureInfo.InvariantCulture, out float r))
-                return r < 0 ? 0 : r;
-            return d;
-        }
     }
 }

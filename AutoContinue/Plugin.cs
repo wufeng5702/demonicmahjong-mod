@@ -10,7 +10,10 @@ namespace AutoContinue
         public override void Load()
         {
             AutoSkip.Log = Log;
+            LingYongAnimSkip.Log = Log;
+            AutoConfig.Log = Log;
             AddComponent<AutoSkip>();
+            AddComponent<LingYongAnimSkip>();
             Log.LogInfo($"[{PluginInfo.Name}] v{GitVersion.Version} loaded");
         }
     }
