@@ -5,20 +5,21 @@
 
 ## 现状
 
-三个 Mod 均已完成并稳定运行：
+四个 Mod 均已完成并稳定运行：
 
 | Mod | 功能 | 关键文件 |
 |-----|------|----------|
 | **ScorePreview** | 左上角 IMGUI 四行 HUD：`计分:` 镜像结算 / `和牌1/2/3:` 听牌预测 | `ScoreHud.cs` / `Prediction.cs` |
 | **SLMenuTrigger** | 牌堆耗尽且分数低于 Boss 时自动暂停游戏，给玩家手动 SL 时间 | `SLMenuTrigger.cs` / `Plugin.cs` |
 | **AutoContinue** | 自动跳过公告【继续】与对局【点击继续】 | `AutoSkip.cs` |
+| **LingPreview** | 幻灵台附牌灵时提示变换效果（象/鼠/马灵逐牌对照） | `LingPanel.cs` / `LingTai.cs` |
 
 共享工具库在 `Shared/`（`StringTruncator` / `NumberParser` / `TransformPath` / `YamlConfig` /
-`FanTextParser` / `ScoreFormula` / `UiText` / `GitVersion`），各 `.csproj` 通过
+`FanTextParser` / `ScoreFormula` / `UiText` / `LingRules` / `GitVersion`），各 `.csproj` 通过
 `<Compile Include="..\Shared\*.cs" />` 引入，其中只有 `TransformPath` 依赖 UnityEngine。
 纯函数另有 `Shared.Tests/`（xunit，net8.0，不依赖 interop），见下「验证口径」。
 
-**版本号唯一事实源是 `Shared/GitVersion.cs`**：三个 csproj 的 `<Version>` 必须与它一致，
+**版本号唯一事实源是 `Shared/GitVersion.cs`**：四个 csproj 的 `<Version>` 必须与它一致，
 release.yml 发版时把 tag 写进两者（tag 格式 `vX.Y.Z`），本地改版本用 `set-version.ps1`（不入库）。
 
 个人路径全部走 `.env`（仓库根 `mod/.env`，已 gitignore）：`DEMONIC_MAHJONG_DIR`。
@@ -31,15 +32,17 @@ mod/
   AGENT.md                 本文件（唯一交接文档）
   .env                     <本机可改，不入库> 个人路径（DEMONIC_MAHJONG_DIR=游戏目录）
   Shared/                  共享工具库（StringTruncator / NumberParser / TransformPath / YamlConfig /
-                           FanTextParser / ScoreFormula / UiText / GitVersion）
+                           FanTextParser / ScoreFormula / UiText / LingRules / GitVersion）
   Shared.Tests/            纯函数单元测试（xunit，不编 mod、不碰 interop）
   ScorePreview/            分数预览 mod（csproj/ScoreHud/Prediction/README）
   SLMenuTrigger/           自动暂停 mod（csproj/SLMenuTrigger/Plugin/README）
   AutoContinue/            自动跳过 mod（csproj/AutoSkip/README）
+  LingPreview/             幻灵台牌灵提示 mod（csproj/LingPanel/LingTai/README）
   install_mods.ps1         一键安装/卸载脚本（仓库根只留这一组入口）
-  tools/modbat/            三个 mod 的 build.bat/install.bat 共用驱动；不放根目录，免得被当成入口
+  tools/modbat/            四个 mod 的 build.bat/install.bat 共用驱动；不放根目录，免得被当成入口
                            （包装里只传 mod 名；注意别用 shift —— shift 会连 %0 一起移，%~dp0 就错了）
   tools/dumptypes/         类型探查工具（Mono.Cecil 读 interop 公有成员；libs/ 为本地拷贝库，不入库）
+  tools/run_game_linux.sh  Linux(Proton) 启动脚本：确保 winhttp=n,b 生效，否则 BepInEx 不加载（见坑 17）
   tools/compiler-licenses/ 捆绑编译器许可文本（release.yml 打包时复制进 tools\compiler\）
   tools/compiler/          捆绑编译器（release 包内才有，不入库；csc.exe + ref\<tfm>\ 引用程序集）
 ```
@@ -61,7 +64,7 @@ mod/
 #    用正斜杠+引号），另生成 AssemblyInfo.generated.cs 对齐 csproj 的 AssemblyVersion。
 # 2) 手动编译/安装（需 .NET SDK；用户机器不装 SDK 也能装 mod，见上面 -Compiler）
 cd ScorePreview
-.\build.bat                 # 或 dotnet build -c Release（编译物在 bin\Release\；三个 mod 目录各有一份）
+.\build.bat                 # 或 dotnet build -c Release（编译物在 bin\Release\；四个 mod 目录各有一份）
 
 # 3) 安装（必须先关游戏，否则"另一个程序正在使用此文件"）
 taskkill //F //IM "Demonic Mahjong.exe"   # exe 名带空格！勿用错名
@@ -73,7 +76,8 @@ dotnet test Shared.Tests/Shared.Tests.csproj
 # 5) 启动游戏并验证
 start "" "%DEMONIC_MAHJONG_DIR%\Demonic Mahjong.exe"
 # 看日志（别直接 tail 整个文件）：
-grep -aE "ScorePreview|SLMenuTrigger|AutoContinue|ting hook|Error" "%DEMONIC_MAHJONG_DIR%\BepInEx\LogOutput.log" | tail
+grep -aE "ScorePreview|SLMenuTrigger|AutoContinue|LingPreview|ting hook|Error" "%DEMONIC_MAHJONG_DIR%\BepInEx\LogOutput.log" | tail
+# Linux(Proton)：用 tools/run_game_linux.sh 启动，否则 doorstop 不加载、BepInEx 整个不启动（坑 17）
 ```
 
 验证口径：
@@ -87,6 +91,9 @@ grep -aE "ScorePreview|SLMenuTrigger|AutoContinue|ting hook|Error" "%DEMONIC_MAH
   → 牌堆耗尽时 `牌堆耗尽! Player < Boss. Pausing. TimeScale=0`。
 - AutoContinue：`[AutoContinue] v<版本> loaded` → `AutoContinue cfg: announce=True/d=2 …`
   → 点击时 `AutoContinue: clicked …`。
+- LingPreview：`[LingPreview] v<版本> loaded` → `LingPanel active xoffset=… fontsize=… detail=…`
+  → 进幻灵台选灵后看 `ling -> 象灵 … | ▶ 北风 → 南风`；开 `debug` 再看 `[probe] state …`
+  （幻灵台当前状态）与 `[probe] ling=…`（该灵在游戏里的配置）。
 
 警惕一坑：BepInEx 6 只作为 **prerelease** 发布，`/releases/latest` 只会命中旧 5.x → 依赖下载必须用
 `releases` 列表 + 资产名匹配 `(?i)il2cpp`+`x64`+非 `x86/linux/macos/unix`。
@@ -119,6 +126,44 @@ grep -aE "ScorePreview|SLMenuTrigger|AutoContinue|ting hook|Error" "%DEMONIC_MAH
 - 结算公式（多次实证）：`总 = 底分(MultiplyNumbers[0]) × 番数([1]) × 倍率([2])`，
   倍率 = (1+Σ基础倍率) × Π(1+独立倍率)。样本：`150 x 147 x 2.25 = 49,612`、
   `160 x 29 x 2.25 = 10,440`（均与按钮 FanNum 小番同刻一致）。
+
+## 牌灵与幻灵台（LingPreview 用）
+
+- **牌灵枚举** `MaJiang.DataConstruct.BaoLingPai.BaoLing`：`XiangLing`象 / `ShuLing`鼠 / `MaLing`马 /
+  `ShunLing`顺 / `ShanLing`山 / `HuLing`狐 / `WanLing`万 / `TongLing`筒 / `SuoLing`索 / `FengLing`风 /
+  `LongLing`龙 / `GuiLing`鬼 / `You1Ling`/`You4Ling` + 念灵 + 宝牌。
+- **灵配置** `BaoLingPayload`（ScriptableObject）：`id` / `displayNameTerm` / `descriptionTerm` /
+  **`menLei`**（Wan/Tong/Suo/Feng/Jian）/ **`numberDiff`** / `tags` / `resourceType`。
+  `numberDiff` 存的是**幅度**（象灵/鼠灵都是 2），**方向由牌灵种类决定**（象 +2 / 鼠 -2）——
+  `Shared/LingRules.DiffFor` 对「存幅度」和「存带符号」两种约定都成立。
+- **有两个「附牌灵」的界面，别搞混**：
+  1. **幻灵台（GameEvent 节点，地图上的那个）= `MaJiang.GameEvent.Runtime.Controller.BaoLingTai`**
+     （继承 `NodeStateMachine`→MonoBehaviour）+ 界面 `MaJiang.UI.GameEvent.PaiMianAdditionUI`：
+     上排选灵、下排选牌、右下「重抽/确认」。**LingPreview 覆盖的就是它**。
+     - 状态：`IsRunning` / `UI` / `CurSelectEnhance`（选中的灵）/ `CurSelectPaiMian`（选中的牌）/
+       `curConfirmCount` / `maxConfirmCount`。
+     - 灵配置从 `CurSelectEnhance.Enhance`（`IItemInfo`）**原生 `Cast<BaoLingPayload>()`** 取。
+     - 判定「界面开着」必须用 `UI.gameObject.activeInHierarchy && !UI.IsHide && !UI.Finished`
+       （离开时游戏只是把界面藏起来，`CurSelectEnhance` 不会清空——拿它当判据面板会残留）。
+  2. **牌面工作台（背包里的）= `MaJiang.PaiMianWorktable`**（继承 `TabControllerBase`→`BagPlatePanel`
+     →`SaintsMonoBehaviour`）+ `MaJiang.UI.PaiMianWorktableUI`：入口
+     `OpenForAdd(int count, BaoLing addBao, BaoLing addLing, bool)`（`PopUIManager.WorktableForAdd(...)`
+     再转它），状态 `AddLing` / `CurMode`（`WorkMode.Add`）/ `CurSelect` / `markedList` / `CanAddCount`。
+     **LingPreview 不覆盖它**（另一套界面）。
+  - `PaiMianWorktable.GetData(PaiMianPayload, BaoLing)`（**静态**）返回 `PaiMianUpdateData`
+    （含 `payload` / `LingBefore/LingAfter` / `ScoreDelta`）——**但它不做牌面变换**，实测原样
+    返回该牌，别拿它当变换函数或交叉校验用。牌面变换的权威只有**玩家实机验证**。
+- **牌面显示名**用游戏自己的 `displayName`（红中/白板/发财、东风/南风/西风/北风、四万/六万…），
+  字牌另备按枚举的固定名兜底（`Jian`: 中=1/白=2/发=3；`Feng`: 东南西北=1-4）。
+  ⚠️ 别再写「游戏里 jian=3 的 displayName 是『白』」——那是**本仓库曾经的兜底串 bug**
+  （`"红中白板发财"[index-1]`，但「红中」占 2 个字符），游戏数据本身是对的。
+- **牌面结构** `MaJiang.DataConstruct.MaJiang.PaiMian { huaSe, number, feng, jian }`；
+  `HuaSe`(None/Wan=1/Tong=2/Tiao=3/Any)、`Feng`(None/Dong=1/Nan=2/Xi=3/Bei=4/Any)、
+  `Jian`(None/Zhong=1/Bai=2/Fa=3/Any)。牌面资产 `PaiMianPayload`（ScriptableObject）。
+- **规则**（玩家实测 + 与枚举自洽）：象灵 +2、鼠灵 -2，**1 起算循环**（8万→1万、9万→2万；
+  东风→西风、北风→南风、红中→发财）；马灵 1↔2 3↔4 5↔6 7↔8、9→8，**风牌/三元牌无效**。
+  实现放在 `Shared/LingRules.cs`（纯函数 + 单测），偏移量优先取 `payload.numberDiff`。
+- 游戏自己的牌灵详情文本位：`MaJiang.UI.PaiMianDetailContainer._paiLingText` / `_paiLingDetailText`。
 
 ## 关键架构事实（实测）
 
@@ -182,7 +227,17 @@ grep -aE "ScorePreview|SLMenuTrigger|AutoContinue|ting hook|Error" "%DEMONIC_MAH
 14. **NumberParser.CleanNumber**：保留逗号（ScorePreview 需要格式化数字）；SLMenuTrigger
     需要 `.Replace(",","")` 后再 `long.TryParse`。
 15. **YamlConfig.Load**：接受文件名（如 `"Mod.yml"`），自动从 dll 所在目录加载。配置丢失时
-    自动从 `defaults` 生成默认文件。三个 Mod 统一使用此接口。
+    自动从 `defaults` 生成默认文件。四个 Mod 统一使用此接口。
+16. **interop 程序集是存根，别指望反编译**：`BepInEx\interop\MaJiang.dll` 由 Il2CppInterop 生成，
+    方法体只是 native 调用桩——Mono.Cecil 看不到游戏逻辑，`dumptypes --xref` 的调用图全是 0
+    （原生逻辑在 `GameAssembly.dll`）。所以游戏规则只能「运行时调游戏 API」或「人工实测」，
+    不能靠读 dll 猜。
+17. **Linux(Proton) 下 BepInEx 可能压根不启动**：Wine 默认用 builtin 的 `winhttp.dll`，
+    **忽略**游戏目录里的 doorstop 代理 → BepInEx 不注入，所有 mod 静默失效，而且
+    `BepInEx\LogOutput.log` 连时间戳都不更新（看起来像"mod 没装"）。
+    症状：游戏能玩、日志停在旧时间、插件列表里没有自己的 mod。
+    解法：前缀里写 `HKCU\Software\Wine\DllOverrides` → `winhttp="n,b"`（对所有启动方式生效），
+    仓库里 `tools/run_game_linux.sh` 会自动检查并补写。
 
 ## 工具 / 常用命令
 
@@ -217,4 +272,4 @@ dumptypes 用法细节：
 - **阶段性修改及时提交**：完成一个功能/修复后立即 `git commit`
 - 提交信息格式：`feat/fix/chore: 简要描述`
 - 改 `Shared/` 纯函数 → 补/改 `Shared.Tests/` 用例并跑 `dotnet test`（CI 会跑同一命令）。
-- 三个 mod 目录下 `dotnet build` 必须 **0 警告 0 错误** 才算改完。
+- 四个 mod 目录下 `dotnet build` 必须 **0 警告 0 错误** 才算改完。

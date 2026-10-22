@@ -10,11 +10,13 @@
 | **ScorePreview** | 对局左上角实时多行**分数预览**      | `计分: 底分 x 番数 x 倍率 = 预计分`；领取计分按钮 / 听牌面板 / 结算面板的实时数据 |
 | **AutoContinue** | 自动跳过「等玩家点一下」的环节        | 自动点公告【继续】进入大厅、自动点 Boss 战【点击继续】进入对局 |
 | **SLMenuTrigger** | 牌堆耗尽且对局分数低于 Boss 时自动暂停游戏 | 给予玩家手动执行 SL 的时间；默认开启，可通过 `SLMenuTrigger.yml` 关闭 |
+| **LingPreview** | 幻灵台附牌灵时提示**变换效果**      | 象/鼠/马灵逐牌对照（`东风 → 西风`）；只在幻灵台出现 |
 
 各自的详细文档见：
 - [ScorePreview/README.md](ScorePreview/README.md)
 - [AutoContinue/README.md](AutoContinue/README.md)
 - [SLMenuTrigger/README.md](SLMenuTrigger/README.md)
+- [LingPreview/README.md](LingPreview/README.md)
 
 ## 快速开始（一键安装 / 卸载）
 1. **下载**  
@@ -61,6 +63,30 @@ powershell -File install_mods.ps1 -Mods 1,2 -Compiler sdk          :: 强制用�
 
 
 
+## Linux（Proton）注意事项
+
+游戏是 Windows 版，Linux 上走 Proton。**默认情况下 BepInEx 不会加载**（Wine 用 builtin 的
+`winhttp.dll`，忽略了游戏目录里的 doorstop 代理），表现为：游戏能玩、但所有 mod 静默失效，
+`BepInEx/LogOutput.log` 的时间戳也不更新。
+
+解决办法（一次就够，对 Steam 图标启动也生效）：
+
+```bash
+# 让 Wine 优先加载游戏目录里的原生 winhttp.dll（= doorstop 代理）
+tools/run_game_linux.sh          # 脚本会自动检查并写入前缀的 DllOverrides，然后启动游戏
+```
+
+等价的手工做法：
+
+```bash
+STEAM_COMPAT_DATA_PATH=~/.local/share/Steam/steamapps/compatdata/3444020 \
+  ~/.local/share/Steam/steamapps/common/Proton\ -\ Experimental/proton run reg.exe \
+  add "HKCU\Software\Wine\DllOverrides" /v winhttp /d "n,b" /f
+```
+
+验证是否生效：启动后 `BepInEx/LogOutput.log` 时间戳应更新，且能看到
+`[BepInEx] Loading [ScorePreview 0.3.2]` 之类的行。
+
 ## 手动构建 / 安装
 
 环境要求：Windows；`.NET SDK` **仅开发时需要**（改源码后用 `build.bat`/`dotnet build` 编译）。
@@ -69,7 +95,7 @@ powershell -File install_mods.ps1 -Mods 1,2 -Compiler sdk          :: 强制用�
 ```bat
 # 1) 编译并安装（先关闭游戏，否则文件被占用；在各 mod 目录内执行）
 taskkill //F //IM "Demonic Mahjong.exe"
-cd ScorePreview && build.bat && install.bat     # 或 cd SLMenuTrigger / cd AutoContinue
+cd ScorePreview && build.bat && install.bat     # 或 cd SLMenuTrigger / cd AutoContinue / cd LingPreview
 ```
 
 `build.bat` / `install.bat` 从仓库根 `.env`（本地文件，不入库）读取 `DEMONIC_MAHJONG_DIR`，
@@ -87,11 +113,12 @@ dotnet test Shared.Tests\Shared.Tests.csproj
 mod/
   install_mods.ps1 / install_mods.bat   一键安装 / 卸载脚本（仓库根只留这一组入口）
   Shared/                              共享工具库（StringTruncator / NumberParser / TransformPath / YamlConfig /
-                                       FanTextParser / ScoreFormula / UiText / GitVersion）
+                                       FanTextParser / ScoreFormula / UiText / LingRules / GitVersion）
   Shared.Tests/                        纯函数单元测试（xunit，不依赖游戏 interop）
   ScorePreview/                        分数预览 mod（源码 + README + build.bat/install.bat 薄包装）
   SLMenuTrigger/                       自动暂停 mod（源码 + 各自 README）
   AutoContinue/                        自动跳过 mod（源码 + 各自 README）
+  LingPreview/                         幻灵台牌灵提示 mod（源码 + README + 薄包装）
   tools/modbat/                        各 mod build.bat/install.bat 共用的驱动（不放根目录，免得当成入口）
   tools/dumptypes/                     反编译类型转储工具（开发用）
   tools/compiler-licenses/             捆绑编译器的第三方许可文本（CI 打包时塞进 tools\compiler）
