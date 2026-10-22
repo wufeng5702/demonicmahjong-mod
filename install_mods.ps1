@@ -67,7 +67,8 @@ function Pause-Exit([int]$code = 0) {
 $catalog = @(
     [pscustomobject]@{ Id = 1; Project = "ScorePreview"; Dll = "ScorePreview.dll"; Cfg = "ScorePreview.yml"; Desc = "分数预览（计分/和牌两行 HUD）" },
     [pscustomobject]@{ Id = 2; Project = "AutoContinue"; Dll = "AutoContinue.dll"; Cfg = "AutoContinue.yml"; Desc = "自动跳过公告【继续】与对局【点击继续】" },
-    [pscustomobject]@{ Id = 3; Project = "SLMenuTrigger"; Dll = "SLMenuTrigger.dll"; Cfg = "SLMenuTrigger.yml"; Desc = "低于 Boss 时自动暂停游戏让玩家手动 SL" }
+    [pscustomobject]@{ Id = 3; Project = "SLMenuTrigger"; Dll = "SLMenuTrigger.dll"; Cfg = "SLMenuTrigger.yml"; Desc = "低于 Boss 时自动暂停游戏让玩家手动 SL" },
+    [pscustomobject]@{ Id = 4; Project = "LingPreview"; Dll = "LingPreview.dll"; Cfg = "LingPreview.yml"; Desc = "幻灵台附牌灵时提示变换效果（象/鼠/马灵逐牌对照）" }
 )
 
 Write-Host "== DemonicMahjong Mod 安装器 ==" -ForegroundColor Cyan
@@ -594,7 +595,8 @@ function Publish-Mod($mod, [string]$game) {
 }
 
 # 默认配置模板：此处的键/默认值必须与各 mod 源码里 YamlConfig.Load 的 defaults 字典
-# （ScoreHud.LoadConfig / MenuTriggerScript.LoadConfig / AutoSkip.LoadConfig）保持一致，
+# （ScoreHud.LoadConfig / MenuTriggerScript.LoadConfig / AutoSkip.LoadConfig / LingPanel.LoadConfig）
+# 保持一致，
 # 改任何一边都要同步另一边（运行时以 mod 内 defaults 为准，本函数只用于首次生成带注释的文件）。
 function Default-Cfg([string]$proj) {
     switch ($proj) {
@@ -632,6 +634,30 @@ function Default-Cfg([string]$proj) {
             "`r`n" +
             "# 暂停提示字体大小`r`n" +
             "fontsize: 24`r`n"
+        }
+        "LingPreview" {
+            return "# LingPreview — 幻灵台附牌灵时提示变换效果（改后重启生效）`r`n" +
+            "`r`n" +
+            "# 是否显示提示面板`r`n" +
+            "enabled: true`r`n" +
+            "`r`n" +
+            "# 面板字体大小`r`n" +
+            "fontsize: 18`r`n" +
+            "`r`n" +
+            "# 行高 = max(字号 + 行距, 字号×1.25)（数值越大行间越松）`r`n" +
+            "linespacing: 10`r`n" +
+            "`r`n" +
+            "# 面板水平锚点 = 屏幕宽度 × 该比例（0.5 = 顶部居中）`r`n" +
+            "xoffset: 0.5`r`n" +
+            "`r`n" +
+            "# 面板垂直锚点 = 屏幕高度 × 该比例（0 = 贴顶）`r`n" +
+            "yoffset: 0.0`r`n" +
+            "`r`n" +
+            "# full = 完整映射表（默认）；brief = 只一行摘要 + 当前牌`r`n" +
+            "detail: full`r`n" +
+            "`r`n" +
+            "# true = 输出诊断日志`r`n" +
+            "debug: false`r`n"
         }
         default { return $null }
     }

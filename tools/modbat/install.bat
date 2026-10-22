@@ -1,5 +1,5 @@
 @echo off
-rem Shared install driver for the three mods. Lives in tools\modbat\ so the repo root
+rem Shared install driver for the four mods. Lives in tools\modbat\ so the repo root
 rem stays a clean set of end-user entry points (install_mods.bat is the only thing to click).
 rem   %1 = mod folder name (dll name is the same), %2 = optional game dir
 rem Each mod keeps a thin install.bat wrapper so `cd ScorePreview && install.bat` still works.
