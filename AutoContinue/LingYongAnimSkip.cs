@@ -36,7 +36,7 @@ namespace AutoContinue
         private const float ScanInterval = 0.05f;       // 时间轴扫描间隔（秒）
         private const float DisplayScanInterval = 0.2f; // 灵俑模型扫描间隔（秒）
         private const float SpeedUpFactor = 60f;        // 模型动画加速倍率
-        private const float RestoreDelay = 0.5f;        // 加速后多久把 speed 还原（秒）
+        private const float MaxBoostDuration = 3f;      // 加速最多维持多久（秒）
         private const float HideDuration = 0.6f;        // hide 模式隐藏时长（秒）
 
         private readonly List<PlayableDirector> _directors = new List<PlayableDirector>(4);
@@ -67,7 +67,7 @@ namespace AutoContinue
             public Animator Animator;
             public int LastHash;
             public float OriginalSpeed = 1f;
-            public float RestoreAt;
+            public float AcceleratedAt;
             public string Name;
         }
 
@@ -160,9 +160,18 @@ namespace AutoContinue
                 }
 
                 if (watch.Animator == null) { watch.Animator = animator; }
+
+                // 之前的加速最多维持 MaxBoostDuration 秒，防止速度卡在高速
+                if (watch.AcceleratedAt > 0f && Time.unscaledTime - watch.AcceleratedAt > MaxBoostDuration)
+                {
+                    RestoreSpeed(watch);
+                }
+
                 if (hash == watch.LastHash) continue;
                 watch.LastHash = hash;
 
+                // 状态切换 = 上一段动画结束，先还原速度再处理新动画
+                RestoreSpeed(watch);
                 OnAnimationStarted(watch, animator, model, hash);
             }
 
@@ -193,7 +202,7 @@ namespace AutoContinue
                 {
                     if (watch.OriginalSpeed <= 0f) watch.OriginalSpeed = SafeSpeed(animator, 1f);
                     animator.speed = SpeedUpFactor;
-                    watch.RestoreAt = Time.unscaledTime + RestoreDelay;
+                    watch.AcceleratedAt = Time.unscaledTime;
                 }
 
                 if (AutoConfig.LingYongAnimDebug)
@@ -209,27 +218,34 @@ namespace AutoContinue
             }
         }
 
+        /// <summary>把加速过的动画速度还原。</summary>
+        private static void RestoreSpeed(AnimWatch watch)
+        {
+            if (watch == null || watch.AcceleratedAt <= 0f) return;
+            watch.AcceleratedAt = 0f;
+            try
+            {
+                if (watch.Animator != null) watch.Animator.speed = watch.OriginalSpeed;
+            }
+            catch (Exception) { }
+        }
+
         private static float SafeSpeed(Animator animator, float fallback)
         {
             try { return animator.speed; }
             catch (Exception) { return fallback; }
         }
 
-        /// <summary>把之前加速过的动画速度还原。</summary>
+        /// <summary>把之前加速过的动画速度还原（状态切换或超时）。</summary>
         private void RestoreSpeeds()
         {
             if (_anims.Count == 0) return;
             foreach (KeyValuePair<int, AnimWatch> kv in _anims)
             {
                 AnimWatch watch = kv.Value;
-                if (watch == null || watch.RestoreAt <= 0f) continue;
-                if (Time.unscaledTime < watch.RestoreAt) continue;
-                watch.RestoreAt = 0f;
-                try
-                {
-                    if (watch.Animator != null) watch.Animator.speed = watch.OriginalSpeed;
-                }
-                catch (Exception) { }
+                if (watch == null || watch.AcceleratedAt <= 0f) continue;
+                if (Time.unscaledTime - watch.AcceleratedAt <= MaxBoostDuration) continue;
+                RestoreSpeed(watch);
             }
         }
 
