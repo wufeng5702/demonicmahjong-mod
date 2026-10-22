@@ -50,6 +50,8 @@ namespace AutoContinue
         private float _nextSearch;
         private float _nextWatch;
         private float _nextScopeLog;
+        private float _nextNewScan;
+        private HashSet<int> _activeIds = new HashSet<int>();
         private bool _loggedReady;
 
         /// <summary>被隐藏的渲染状态，动画结束后还原。</summary>
@@ -177,10 +179,183 @@ namespace AutoContinue
 
             if (AutoConfig.LingYongAnimDebug && Time.unscaledTime >= _nextScopeLog)
             {
-                _nextScopeLog = Time.unscaledTime + 5f;
+                _nextScopeLog = Time.unscaledTime + 1f;
                 Log?.LogInfo("LingYongAnimSkip: 灵俑 display=" + displays.Length + " 范围内=" + inScope
                     + " 有模型=" + withModel + " 有Animator=" + withAnim
                     + " 大厅面板=" + (HasLobbyPanel() ? "有" : "无"));
+                ProbeScene();
+            }
+        }
+
+        /// <summary>调试用：列出场景里正在播的粒子 / 动画，以及名字带灵俑关键字的对象。</summary>
+        private void ProbeScene()
+        {
+            try
+            {
+                var ps = UnityEngine.Object.FindObjectsOfType<ParticleSystem>(true);
+                int shown = 0;
+                for (int i = 0; i < ps.Length && shown < 30; i++)
+                {
+                    var p = ps[i];
+                    if (p == null) continue;
+                    bool playing = false;
+                    try { playing = p.isPlaying; }
+                    catch (Exception) { }
+                    if (!playing) continue;
+                    shown++;
+                    Log?.LogInfo("  ps[" + shown + "] " + Path(p.gameObject) + " playing");
+                }
+                Log?.LogInfo("LingYongAnimSkip: 场景播放中的粒子 " + shown + " 个");
+
+                var anims = UnityEngine.Object.FindObjectsOfType<Animator>(true);
+                shown = 0;
+                for (int i = 0; i < anims.Length && shown < 15; i++)
+                {
+                    var a = anims[i];
+                    if (a == null) continue;
+                    shown++;
+                    Log?.LogInfo("  anim[" + shown + "] " + Path(a.gameObject)
+                        + " state=" + a.GetCurrentAnimatorStateInfo(0).shortNameHash);
+                }
+                Log?.LogInfo("LingYongAnimSkip: 场景 Animator " + shown + " 个");
+
+                var spines = UnityEngine.Object.FindObjectsOfType<Spine.Unity.SkeletonAnimation>(true);
+                shown = 0;
+                for (int i = 0; i < spines.Length && shown < 15; i++)
+                {
+                    var s = spines[i];
+                    if (s == null) continue;
+                    shown++;
+                    Log?.LogInfo("  spine[" + shown + "] " + Path(s.gameObject)
+                        + " anim=" + s.AnimationName);
+                }
+                Log?.LogInfo("LingYongAnimSkip: 场景 Spine " + shown + " 个");
+
+                var gos = UnityEngine.Object.FindObjectsOfType<GameObject>(true);
+                shown = 0;
+                for (int i = 0; i < gos.Length && shown < 25; i++)
+                {
+                    var go = gos[i];
+                    if (go == null) continue;
+                    string n = go.name;
+                    if (n.IndexOf("Ling", StringComparison.OrdinalIgnoreCase) < 0
+                        && n.IndexOf("XiaoChou", StringComparison.OrdinalIgnoreCase) < 0
+                        && n.IndexOf("Yong", StringComparison.OrdinalIgnoreCase) < 0) continue;
+                    shown++;
+                    Log?.LogInfo("  go " + Path(go));
+                }
+                Log?.LogInfo("LingYongAnimSkip: 名字带灵俑关键字的对象 " + shown + " 个");
+
+                DumpGameMapMgr();
+                WatchNewlyActive();
+            }
+            catch (Exception e)
+            {
+                Log?.LogWarning("LingYongAnimSkip: probe failed: " + StringTruncator.FirstLine(e.ToString()));
+            }
+        }
+
+        /// <summary>
+        /// 调试用：找出「刚被激活」的对象——局外灵俑演出就是这种弹出来的卡/特效，
+        /// 激活的瞬间会出现在这里（带粒子或动画的优先）。
+        /// </summary>
+        private void WatchNewlyActive()
+        {
+            if (Time.unscaledTime < _nextNewScan) return;
+            _nextNewScan = Time.unscaledTime + 1f;
+            try
+            {
+                var gos = UnityEngine.Object.FindObjectsOfType<GameObject>(true);
+                var now = new HashSet<int>();
+                var fresh = new List<GameObject>();
+                for (int i = 0; i < gos.Length; i++)
+                {
+                    GameObject go = gos[i];
+                    if (go == null || !go.activeInHierarchy) continue;
+                    int id = go.GetInstanceID();
+                    now.Add(id);
+                    if (!_activeIds.Contains(id)) fresh.Add(go);
+                }
+                _activeIds = now;
+
+                if (fresh.Count == 0) return;
+                int shown = 0;
+                for (int i = 0; i < fresh.Count && shown < 12; i++)
+                {
+                    GameObject go = fresh[i];
+                    string comps = Components(go);
+                    // 只报带粒子/动画/画组的新对象，避免刷屏
+                    if (comps.IndexOf("Particle", StringComparison.Ordinal) < 0
+                        && comps.IndexOf("Animator", StringComparison.Ordinal) < 0
+                        && comps.IndexOf("CanvasGroup", StringComparison.Ordinal) < 0
+                        && comps.IndexOf("Skeleton", StringComparison.Ordinal) < 0) continue;
+                    shown++;
+                    Log?.LogInfo("  new[" + shown + "] " + Path(go) + " comps=" + comps);
+                }
+                if (shown > 0) Log?.LogInfo("LingYongAnimSkip: 新激活的演出对象 " + shown + " 个");
+            }
+            catch (Exception e)
+            {
+                Log?.LogWarning("LingYongAnimSkip: watch new failed: "
+                    + StringTruncator.FirstLine(e.ToString()));
+            }
+        }
+
+        /// <summary>调试用：列出 GameMapMgr 下的全部子对象（灵俑演出都挂在这下面）。</summary>
+        private void DumpGameMapMgr()
+        {
+            try
+            {
+                var gos = UnityEngine.Object.FindObjectsOfType<GameObject>(true);
+                GameObject root = null;
+                for (int i = 0; i < gos.Length; i++)
+                {
+                    if (gos[i] != null && gos[i].name == "GameMapMgr") { root = gos[i]; break; }
+                }
+                if (root == null)
+                {
+                    Log?.LogInfo("LingYongAnimSkip: 未找到 GameMapMgr");
+                    return;
+                }
+
+                int shown = 0;
+                var stack = new Stack<Transform>();
+                Transform rootT = root.transform;
+                for (int i = rootT.childCount - 1; i >= 0; i--) stack.Push(rootT.GetChild(i));
+                while (stack.Count > 0 && shown < 60)
+                {
+                    Transform t = stack.Pop();
+                    if (t == null) continue;
+                    shown++;
+                    Log?.LogInfo("  gmm[" + shown + "] " + Path(t.gameObject) + " comps=" + Components(t.gameObject));
+                    for (int i = t.childCount - 1; i >= 0; i--) stack.Push(t.GetChild(i));
+                }
+                Log?.LogInfo("LingYongAnimSkip: GameMapMgr 子对象 " + shown + " 个");
+            }
+            catch (Exception e)
+            {
+                Log?.LogWarning("LingYongAnimSkip: dump GameMapMgr failed: "
+                    + StringTruncator.FirstLine(e.ToString()));
+            }
+        }
+
+        private static string Components(GameObject go)
+        {
+            try
+            {
+                var comps = go.GetComponents<Component>();
+                var sb = new System.Text.StringBuilder();
+                for (int i = 0; i < comps.Length; i++)
+                {
+                    if (comps[i] == null) continue;
+                    if (sb.Length > 0) sb.Append(',');
+                    sb.Append(comps[i].GetType().Name);
+                }
+                return sb.ToString();
+            }
+            catch (Exception)
+            {
+                return "?";
             }
         }
 
