@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <!-- 纯函数单元测试：只覆盖 Shared/ 里不依赖 Unity/interop 的部分。
-       三个 mod 工程需要游戏 interop 才能编译，不进这个测试。 -->
+       四个 mod 工程需要游戏 interop 才能编译，不进这个测试。 -->
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
     <LangVersion>10</LangVersion>
@@ -27,6 +27,7 @@
     <Compile Include="..\Shared\FanTextParser.cs" />
     <Compile Include="..\Shared\ScoreFormula.cs" />
     <Compile Include="..\Shared\UiText.cs" />
+    <Compile Include="..\Shared\LingRules.cs" />
   </ItemGroup>
 
 </Project>

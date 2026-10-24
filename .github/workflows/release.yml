@@ -18,19 +18,19 @@ jobs:
             - name: Checkout code
               uses: actions/checkout@v7
 
-            # 版本唯一事实来源 = git tag；GitVersion.cs（插件显示版本）与三个 csproj 的
+            # 版本唯一事实来源 = git tag；GitVersion.cs（插件显示版本）与四个 csproj 的
             # <Version>（AssemblyVersion 来源）一起改，避免两套版本号漂移。
             - name: Write GitVersion
               run: |
                 set -e
                 VER="${GITHUB_REF_NAME#v}"
                 echo "static class GitVersion { internal const string Version = \"${VER}+${GITHUB_SHA::7}\"; }" > "Shared/GitVersion.cs"
-                for f in ScorePreview/ScorePreview.csproj AutoContinue/AutoContinue.csproj SLMenuTrigger/SLMenuTrigger.csproj; do
+                for f in ScorePreview/ScorePreview.csproj AutoContinue/AutoContinue.csproj SLMenuTrigger/SLMenuTrigger.csproj LingPreview/LingPreview.csproj; do
                   sed -i "s|<Version>[^<]*</Version>|<Version>${VER}</Version>|" "$f"
                 done
                 grep -h "<Version>" ScorePreview/ScorePreview.csproj
 
-            # 三个 mod 需要游戏 interop 才能编译，CI 只能跑纯函数单测；发版前必须全绿。
+            # 四个 mod 需要游戏 interop 才能编译，CI 只能跑纯函数单测；发版前必须全绿。
             - name: Run unit tests
               run: |
                 set -e
