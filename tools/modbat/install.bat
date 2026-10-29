@@ -43,6 +43,18 @@ if not exist "%ROOT%\%MOD%\%PLUGIN%" (
     exit /b 1
 )
 
+set "COMPAT=%ROOT%\Compatibility\bin\Release\DemonicMahjong.Compatibility.dll"
+if not exist "%COMPAT%" (
+    echo [install] missing compatibility patcher; run build.bat first.
+    exit /b 1
+)
+if not exist "%GAME_DIR%\BepInEx\patchers" mkdir "%GAME_DIR%\BepInEx\patchers"
+copy /y "%COMPAT%" "%GAME_DIR%\BepInEx\patchers\DemonicMahjong.Compatibility.dll" >nul
+if errorlevel 1 (
+    echo [install] compatibility copy FAILED; close the game and retry.
+    exit /b 1
+)
+
 pushd "%ROOT%\%MOD%" >nul
 copy /y "%PLUGIN%" "%GAME_DIR%\BepInEx\plugins\%MOD%.dll" >nul
 set "RC=%ERRORLEVEL%"

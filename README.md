@@ -39,9 +39,11 @@
 2. **自动探测游戏目录**：Steam 注册表 + `libraryfolders.vdf`（支持多磁盘库）→ 兜底仓库根 `.env`
    的 `DEMONIC_MAHJONG_DIR` → 兜底手动输入。
 3. **自动补装/升级 BepInEx**：缺失时从 BepInEx 开发构建页面下载所需依赖（`BepInEx\` + `winhttp.dll` +
-   `doorstop_config.ini` + `dotnet\`）；已装但版本低于 `be.785` 时会**询问是否覆盖升级**（只覆盖框架文件，
+   `doorstop_config.ini` + `dotnet\`）；已装但版本低于 `be.791` 时会**询问是否覆盖升级**（只覆盖框架文件，
    `config\`/`plugins\`/`interop\` 保留，回答 `y` 才升级）。完成后会自动隐藏 BepInEx 日志控制台黑窗口。
-4. **逐个编译并安装**选中的 mod 到 `游戏\BepInEx\plugins\`，缺失的配置文件自动生成默认模板。
+4. **先安装启动兼容补丁**到 `游戏\BepInEx\patchers\DemonicMahjong.Compatibility.dll`，再启动检查并更新
+   `interop\`；旧 mod 在检查期间暂时停用，结束后恢复。检查失败就停止，不会拿过期程序集编译。
+5. **逐个编译并安装**选中的 mod 到 `游戏\BepInEx\plugins\`，缺失的配置文件自动生成默认模板。
    编译器选择见 `-Compiler`（默认 `auto`：有 .NET SDK 用 SDK，否则用包内 `tools\compiler` 的 csc；
    SDK 编译失败时也会自动退回包内 csc）。
 
@@ -57,9 +59,10 @@ powershell -File install_mods.ps1 -Mods 1,2 -Compiler csc          :: 强制用�
 powershell -File install_mods.ps1 -Mods 1,2 -Compiler sdk          :: 强制用本机 .NET SDK
 ```
 
-> 首次装 BepInEx 后，`interop\` 未生成则 mod 无法编译。脚本检测到缺失时会**自动处理**：
-> 最小化启动一次游戏，等待加载完成后自动关闭（窗口会短暂出现，属正常现象）；
-> 自动处理失败时才需要你手动启动一次游戏并退出，然后重跑 `install_mods.bat`。
+> 安装时会自动进行一次无窗口启动检查，确保框架完成初始化、`interop\` 完整且没有过期，
+> 然后关闭安装器自己启动的检查进程，不会进入对局。
+> 首次生成可能需要数分钟，请让检查自行结束，不要手动关闭游戏或控制台。
+> 自动检查失败时才需要手动启动游戏进入主菜单并退出，再按提示继续。
 
 
 
@@ -115,11 +118,13 @@ mod/
   Shared/                              共享工具库（StringTruncator / NumberParser / TransformPath / YamlConfig /
                                        FanTextParser / ScoreFormula / UiText / LingRules / GitVersion）
   Shared.Tests/                        纯函数单元测试（xunit，不依赖游戏 interop）
+  Compatibility/                       HybridCLR 启动兼容补丁（只引用框架，先于普通 mod 加载）
   ScorePreview/                        分数预览 mod（源码 + README + build.bat/install.bat 薄包装）
   SLMenuTrigger/                       自动暂停 mod（源码 + 各自 README）
   AutoContinue/                        自动跳过 mod（源码 + 各自 README）
   LingPreview/                         幻灵台牌灵提示 mod（源码 + README + 薄包装）
   tools/modbat/                        各 mod build.bat/install.bat 共用的驱动（不放根目录，免得当成入口）
+  tools/tests/                         安装器回归测试（模拟进程，不启动游戏）
   tools/dumptypes/                     反编译类型转储工具（开发用）
   tools/compiler-licenses/             捆绑编译器的第三方许可文本（CI 打包时塞进 tools\compiler）
   tools/compiler/                      捆绑编译器（只在 release 包里，不入库）
@@ -142,9 +147,22 @@ install_mods.bat -u -RemoveBepInEx       :: 连同 BepInEx 框架与前置（win
 
 ## 游戏更新后
 
-BepInEx 每次启动会自动重新生成 `interop\`；若签名变化导致编译失败，重跑 `build.bat` + `install.bat`。
+BepInEx 启动时检查 `interop\` 是否过期，仅在需要时重新生成（`UpdateInteropAssemblies` 应为 `true`）。
+游戏更新后建议关闭游戏，重跑 `install_mods.bat`，选择要更新的 mod。
 UI 结构调整导致读取不到数字时，看 `BepInEx\LogOutput.log`，各 mod README 的「日志输出」一节列了关键行
 （`Diag: uiFanMin=` / `hud ->` / `SLMenuTrigger cfg:` / `AutoContinue cfg:`）。
+
+### 月圆奇谭更新 / `Custom` 目录
+
+此版本引入 HybridCLR 热更新运行时。单独安装 BepInEx `be.791` 仍可能在没有任何插件时崩溃：
+`MetadataCache_GetTypeInfoFromTypeDefinitionIndex_Hook.Hook(Int32)` 错把类型句柄当成整数索引。
+本仓库的启动兼容补丁只在检测到 Unity 6.3 + HybridCLR + Il2CppInterop 1.5.3 时停用这个不兼容钩子；
+不修改游戏本体、DLC 或存档。详情见 [Compatibility/README.md](Compatibility/README.md)。
+
+`Custom/Dlcs`、`Custom/Mods` 是游戏 SDK 的内容目录，**不是 BepInEx 插件目录**。
+本仓库四个 mod 仍须安装到 `BepInEx/plugins`，不能直接把 DLL 放进 `Custom/Mods`。
+脱离 BepInEx 需要按游戏原生 SDK 的入口和包格式另行适配；仅有这些目录不能保证兼容现有插件。
+只卸载 mod 时保留启动补丁，直到一并卸载 BepInEx，避免框架自身再次触发上述崩溃。
 
 ## Bug 报告
 

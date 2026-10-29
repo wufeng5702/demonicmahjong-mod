@@ -194,6 +194,7 @@ namespace LingPreview
         }
 
         /// <summary>量出面板需要的宽度（各行自身样式的最大宽 + 内边距）。</summary>
+        [Il2CppInterop.Runtime.Attributes.HideFromIl2Cpp]
         private float MeasureWidth(LingView view, float pad)
         {
             if (view == null) return 0f;
@@ -208,6 +209,7 @@ namespace LingPreview
             return width + pad * 2f;
         }
 
+        [Il2CppInterop.Runtime.Attributes.HideFromIl2Cpp]
         private GUIStyle StyleOf(LineKind kind)
         {
             switch (kind)

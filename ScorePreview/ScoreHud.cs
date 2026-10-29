@@ -314,9 +314,9 @@ namespace ScorePreview
                 bool anim = false;
                 string m0 = "", m1 = "", m2 = "", total = "";
                 var prs = PlayerRoundStatistics.Instance;
-                if (prs != null && prs.HuPaiJieSuan != null)
+                if (prs != null && prs._curHuPaiJieSuan != null)
                 {
-                    var h = prs.HuPaiJieSuan;
+                    var h = prs._curHuPaiJieSuan;
                     sb.Append("win=huizhi");
                     if (h.MultiplyNumbers != null)
                     {
@@ -610,6 +610,7 @@ namespace ScorePreview
         }
 
         /// <summary>结算签名出现时：带 GoPath 深扫，最多 80 条，确认 底分/倍率/总 数值归属。</summary>
+        [Il2CppInterop.Runtime.Attributes.HideFromIl2Cpp]
         private void ScanDeep(TMPro.TMP_Text[] texts)
         {
             try

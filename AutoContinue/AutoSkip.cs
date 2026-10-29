@@ -154,6 +154,7 @@ namespace AutoContinue
         /// 1. 按钮自身或父级路径包含结算关键词（HuPaiJieSuan、FanXingJieSuan、Settlement、Result、结算、详情等）；
         /// 2. 同一父级或附近存在“详情”按钮（作为兜底）。
         /// </summary>
+        [Il2CppInterop.Runtime.Attributes.HideFromIl2Cpp]
         private bool IsSettlementButton(Button continueBtn, List<(Button btn, string text)> allButtons)
         {
             // 检查路径关键词
