@@ -59,6 +59,10 @@ powershell -File install_mods.ps1 -Mods 1,2 -Compiler csc          :: 强制用�
 powershell -File install_mods.ps1 -Mods 1,2 -Compiler sdk          :: 强制用本机 .NET SDK
 ```
 
+在 PowerShell 中也可直接调用脚本：`.\install_mods.ps1 -u -Mods 1,2,3,4`。
+`-Mods` 支持逗号、空格、顿号、分号分隔或 PowerShell 数组；菜单中的无效编号会提示重新输入，
+`0` 或空回车取消。若不需要菜单，明确传入 `-Mods` 即可；`-RemoveBepInEx` 仍需确认后才删除框架。
+
 > 安装时会自动进行一次无窗口启动检查，确保框架完成初始化、`interop\` 完整且没有过期，
 > 然后关闭安装器自己启动的检查进程，不会进入对局。
 > 首次生成可能需要数分钟，请让检查自行结束，不要手动关闭游戏或控制台。

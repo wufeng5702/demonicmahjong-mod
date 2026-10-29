@@ -78,6 +78,7 @@ taskkill //F //IM "Demonic Mahjong.exe"   # exe 名带空格！勿用错名
 # 4) 纯函数单元测试（改 Shared/ 后必跑；不需要游戏目录）
 dotnet test Shared.Tests/Shared.Tests.csproj
 powershell -File tools/tests/installer.Tests.ps1
+powershell -File tools/tests/installer-cli.Tests.ps1
 
 # 5) 启动游戏并验证
 start "" "%DEMONIC_MAHJONG_DIR%\Demonic Mahjong.exe"
@@ -292,3 +293,7 @@ dumptypes 用法细节：
 - 提交信息格式：`feat/fix/chore: 简要描述`
 - 改 `Shared/` 纯函数 → 补/改 `Shared.Tests/` 用例并跑 `dotnet test`（CI 会跑同一命令）。
 - 四个 mod 目录下 `dotnet build` 必须 **0 警告 0 错误** 才算改完。
+- 改安装器参数或菜单 → 跑 `tools/tests/installer-cli.Tests.ps1`；它在临时假游戏目录中真实调用
+  PowerShell 5.1，验证 `-u/-Uninstall/-RemoveBepInEx/-Mods`、交互输入、取消/重试及 EOF。
+  `-Mods` 是 string[]，主流程需用 `@(...)` 收集结果（PS 5.1 单个 PSCustomObject 没有 Count）。
+  非 ASCII 的 .ps1 必须保留 UTF-8 BOM，避免 Windows PowerShell 5.1 错解码。

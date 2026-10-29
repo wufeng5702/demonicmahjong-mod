@@ -11,7 +11,7 @@
     <ImplicitUsings>disable</ImplicitUsings>
     <RootNamespace>DemonicMahjong.Compatibility</RootNamespace>
     <AssemblyName>DemonicMahjong.Compatibility</AssemblyName>
-    <Version>0.3.3</Version>
+    <Version>0.4.1</Version>
     <OutputType>Library</OutputType>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
   </PropertyGroup>

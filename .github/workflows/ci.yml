@@ -51,3 +51,7 @@ jobs:
             - name: Test installer without launching a game
               shell: powershell
               run: .\tools\tests\installer.Tests.ps1
+
+            - name: Test installer CLI and interactive input
+              shell: powershell
+              run: .\tools\tests\installer-cli.Tests.ps1

@@ -8,7 +8,7 @@
    powershell -ExecutionPolicy Bypass -File install_mods.ps1 -u -RemoveBepInEx   # 卸载并删 BepInEx
 
  参数：
-   -Mods <string>    要安装的 mod 编号（逗号分隔，如 1,2），给则跳过交互菜单
+   -Mods <string[]>  mod 编号（支持 1,2 或数组），给则跳过交互菜单
    -u / -Uninstall   卸载模式：移除已装 mod 的 dll/配置文件
    -RemoveBepInEx    卸载时一并删除 BepInEx 框架与前置（winhttp/doorstop/dotnet）
    -SkipBepInEx      安装时跳过 BepInEx 依赖安装（仅装 mod 本体）
@@ -22,7 +22,7 @@
 #>
 [CmdletBinding()]
 param(
-    [string]$Mods = "",
+    [string[]]$Mods = @(),
     [switch]$u,
     [switch]$Uninstall,
     [switch]$RemoveBepInEx,
@@ -55,11 +55,20 @@ $script:UsedMenu = $false          # 只有走过 Ask-Mods 才在结束时 pause
 function Read-Input([string]$prompt) {
     # 非交互时返回空串，由调用方走默认/取消分支，绝不阻塞
     if (-not $script:IsInteractive) { return "" }
+    # 嵌套启动 powershell.exe 时，直接从控制台 stdin 读整行，不依赖子宿主的 Read-Host 输入处理。
+    if ($Host.Name -eq 'ConsoleHost') {
+        Write-Host "$($prompt): " -NoNewline
+        $line = [Console]::ReadLine()
+        if ($null -eq $line) { throw "控制台输入已结束。可用 -Mods 1,2,3,4 明确指定编号，或直接运行 .\install_mods.ps1。" }
+        return $line
+    }
     return (Read-Host $prompt)
 }
 
 function Pause-Exit([int]$code = 0) {
-    if ($script:IsInteractive -and $script:UsedMenu) { Read-Host "按回车退出" | Out-Null }
+    if ($script:IsInteractive -and $script:UsedMenu) {
+        try { Read-Input "按回车退出" | Out-Null } catch { }
+    }
     exit $code
 }
 
@@ -139,24 +148,24 @@ function Ask-Mods {
     Write-Host "  [0] 取消"
     if (-not $script:IsInteractive) { return @() }
     $script:UsedMenu = $true
-    $raw = Read-Host "输入编号（逗号/空格分隔，如 1,2）"
-    $sel = @()
-    foreach ($tok in ($raw -split "[,\s，]+")) {
-        $n = 0
-        if ([int]::TryParse($tok, [ref]$n)) {
-            if ($n -eq 0) { return @() }
-            foreach ($m in $catalog) { if ($m.Id -eq $n) { $sel += $m } }
+    while ($true) {
+        $raw = Read-Input "输入编号（逗号/空格分隔，如 1,2；0 或空回车取消）"
+        try { return @(Parse-Mods $raw) }
+        catch {
+            Write-Host "输入无效：$($_.Exception.Message) 请重新输入，或输入 0 取消。" -ForegroundColor Yellow
         }
     }
-    return $sel
 }
-function Parse-Mods([string]$s) {
+function Parse-Mods([string[]]$s) {
     $sel = @()
-    foreach ($tok in ($s -split "[,\s，]+")) {
+    foreach ($tok in (($s -join ' ') -split "[,\s，、;；]+")) {
+        if ([string]::IsNullOrWhiteSpace($tok)) { continue }
         $n = 0
-        if ([int]::TryParse($tok, [ref]$n)) {
-            foreach ($m in $catalog) { if ($m.Id -eq $n) { $sel += $m } }
-        }
+        if (-not [int]::TryParse($tok, [ref]$n)) { throw "不是有效编号: $tok" }
+        if ($n -eq 0) { return @() }
+        $mod = $catalog | Where-Object { $_.Id -eq $n } | Select-Object -First 1
+        if (-not $mod) { throw "未知 mod 编号: $tok" }
+        if ($sel.Id -notcontains $n) { $sel += $mod }
     }
     return $sel
 }
@@ -749,7 +758,7 @@ function Invoke-AutoGenerateInterop([string]$game) {
         if (-not $success -and $script:IsInteractive) {
             Write-Host "  请确认 Steam 已运行。若日志提示 interop 过期，先将 BepInEx.cfg 的 UpdateInteropAssemblies 改为 true。" -ForegroundColor Yellow
             Write-Host "  手动启动游戏进入主菜单并退出，然后按回车重新检查（旧 mod 暂时停用）..." -ForegroundColor Yellow
-            Read-Host | Out-Null
+            Read-Input "按回车重新检查" | Out-Null
             $lines = @(Get-Content -LiteralPath $log -ErrorAction SilentlyContinue)
             $success = -not (Get-Process -Name "Demonic Mahjong" -ErrorAction SilentlyContinue) `
                 -and (Test-InteropReady $game) -and (Test-InteropStartupLog $lines)
@@ -781,8 +790,12 @@ function Uninstall-Mod($mod, [string]$game) {
 # ============ 主流程 ============
 if ($Uninstall) {
     $sel = @()
-    if ($Mods -ne "") { $sel = Parse-Mods $Mods } else { $sel = Ask-Mods }
-    if ($sel.Count -eq 0) { Write-Host "未选择任何 mod，退出。" -ForegroundColor DarkGray; Pause-Exit 0 }
+    try {
+        if ($Mods.Count -gt 0) { $sel = @(Parse-Mods $Mods) } else { $sel = @(Ask-Mods) }
+    }
+    catch { Write-Host "编号读取失败：$($_.Exception.Message)" -ForegroundColor Red; Pause-Exit 1 }
+    if ($sel.Count -eq 0) { Write-Host "未选择任何 mod，已取消卸载。" -ForegroundColor Yellow; Pause-Exit 0 }
+    Write-Host ("[卸载] 已选择: " + (($sel.Project) -join ", ")) -ForegroundColor Cyan
     $game = Resolve-GameDir
     if (-not $game) { Write-Host "未确定游戏目录，退出。" -ForegroundColor Red; Pause-Exit 1 }
     foreach ($m in $sel) { Uninstall-Mod $m $game }
@@ -795,6 +808,7 @@ if ($Uninstall) {
             }
             Write-Host "[卸载] BepInEx 框架已删除。" -ForegroundColor Green
         }
+        else { Write-Host "[卸载] 未确认删除，保留 BepInEx 框架。" -ForegroundColor Yellow }
     }
     Write-Host "卸载完成。" -ForegroundColor Green
     Pause-Exit 0
@@ -802,7 +816,10 @@ if ($Uninstall) {
 
 # 安装
 $sel = @()
-if ($Mods -ne "") { $sel = Parse-Mods $Mods } else { $sel = Ask-Mods }
+try {
+    if ($Mods.Count -gt 0) { $sel = @(Parse-Mods $Mods) } else { $sel = @(Ask-Mods) }
+}
+catch { Write-Host "编号读取失败：$($_.Exception.Message)" -ForegroundColor Red; Pause-Exit 1 }
 if ($sel.Count -eq 0) {
     Write-Host "未选择任何 mod，跳过依赖安装并退出。" -ForegroundColor DarkGray
     Pause-Exit 0

@@ -1,4 +1,4 @@
-param([string]$TempRoot = $env:TEMP)
+﻿param([string]$TempRoot = $env:TEMP)
 
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
@@ -123,6 +123,18 @@ try {
     Assert-True ((Get-Content -LiteralPath $plugin -Raw) -eq 'old plugin') 'Running-game check moved the plugin'
     Assert-True ((Get-Content -LiteralPath (Join-Path $game 'Custom\Dlcs\keep.txt') -Raw) -eq 'DLC content') 'Custom DLC changed'
     Assert-True ((Get-Content -LiteralPath (Join-Path $game 'Custom\Mods\keep.txt') -Raw) -eq 'official mod content') 'Custom mods changed'
+    $catalog = @(1..4 | ForEach-Object { [pscustomobject]@{ Id = $_; Project = "Mod$_" } })
+    foreach ($inputText in @('1,2,3,4', '1 2 3 4', '1，2，3，4', '1、2、3、4', '1;2;3;4', '1；2；3；4')) {
+        Assert-True ((@(Parse-Mods $inputText).Id -join ',') -eq '1,2,3,4') "Multi-mod separator rejected: $inputText"
+    }
+    Assert-True ((@(Parse-Mods @('1', '2', '3', '4')).Id -join ',') -eq '1,2,3,4') 'Array parameter rejected'
+    Assert-True (@(Parse-Mods '1,1,2').Count -eq 2) 'Duplicate mod selection not deduplicated'
+    Assert-True (@(Parse-Mods '0').Count -eq 0) 'Cancel selection rejected'
+    foreach ($inputText in @('1,invalid,2', '5', '-1')) {
+        $threw = $false
+        try { Parse-Mods $inputText | Out-Null } catch { $threw = $true }
+        Assert-True $threw "Invalid selection silently accepted: $inputText"
+    }
     Write-Host "Installer tests passed ($script:passed assertions)." -ForegroundColor Green
 }
 finally {
