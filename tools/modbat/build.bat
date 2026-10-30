@@ -31,6 +31,10 @@ if "%GAME_DIR%"=="" (
     exit /b 1
 )
 
+rem The compatibility patcher uses core assemblies only and must also be built for manual installs.
+dotnet build "%ROOT%\Compatibility\Compatibility.csproj" -c Release -p:GameDir="%GAME_DIR%"
+if errorlevel 1 exit /b 1
+
 pushd "%ROOT%\%MOD%" >nul
 dotnet build -c Release -p:GameDir="%GAME_DIR%"
 set "RC=%ERRORLEVEL%"
@@ -40,7 +44,7 @@ if not "%RC%"=="0" (
     echo.
     echo [build] FAILED for %MOD%.
     echo [build] if interop\MaJiang.dll / Il2Cppmscorlib.dll missing:
-    echo [build]   launch the game once so BepInEx generates interop, then retry.
+    echo [build]   run install_mods.bat from the repo root to install compatibility and refresh interop.
     echo [build] if BepInEx\core\BepInEx.Core.dll missing:
     echo [build]   check game root, or pass another dir:
     echo [build]     build.bat %MOD% D:\another\game\dir

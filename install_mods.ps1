@@ -8,7 +8,7 @@
    powershell -ExecutionPolicy Bypass -File install_mods.ps1 -u -RemoveBepInEx   # 卸载并删 BepInEx
 
  参数：
-   -Mods <string>    要安装的 mod 编号（逗号分隔，如 1,2），给则跳过交互菜单
+   -Mods <string[]>  mod 编号（支持 1,2 或数组），给则跳过交互菜单
    -u / -Uninstall   卸载模式：移除已装 mod 的 dll/配置文件
    -RemoveBepInEx    卸载时一并删除 BepInEx 框架与前置（winhttp/doorstop/dotnet）
    -SkipBepInEx      安装时跳过 BepInEx 依赖安装（仅装 mod 本体）
@@ -22,7 +22,7 @@
 #>
 [CmdletBinding()]
 param(
-    [string]$Mods = "",
+    [string[]]$Mods = @(),
     [switch]$u,
     [switch]$Uninstall,
     [switch]$RemoveBepInEx,
@@ -38,12 +38,12 @@ $ProgressPreference = 'SilentlyContinue'
 $scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 
 # 目标 BepInEx 版本（开发构建）：低于此构建号时询问是否升级
-$script:BepInExTargetBuild = 785
-$script:BepInExTargetLabel = "be.785"
-$script:BepInExDownloadUrl = "https://builds.bepinex.dev/projects/bepinex_be/785/BepInEx-Unity.IL2CPP-win-x64-6.0.0-be.785%2B6abdba4.zip"
-$script:BepInExZipName = "BepInEx-Unity.IL2CPP-win-x64-6.0.0-be.785+6abdba4.zip"
+$script:BepInExTargetBuild = 791
+$script:BepInExTargetLabel = "be.791"
+$script:BepInExDownloadUrl = "https://builds.bepinex.dev/projects/bepinex_be/791/BepInEx-Unity.IL2CPP-win-x64-6.0.0-be.791%2Bb782da4.zip"
+$script:BepInExZipName = "BepInEx-Unity.IL2CPP-win-x64-6.0.0-be.791+b782da4.zip"
 # 升级 BepInExTargetBuild / 换 URL 时必须同步更新
-$script:BepInExZipSha256 = "2a7cbf74d26abe4765c3e662db1721b923bac39849ebfef2ca5dc7de7e2d9b7f"
+$script:BepInExZipSha256 = "bb1c510909b69522733791f3a0817a487379a52da6468a492f1c9c19b3ec6f9a"
 
 if ($u) { $Uninstall = $true }
 
@@ -55,11 +55,20 @@ $script:UsedMenu = $false          # 只有走过 Ask-Mods 才在结束时 pause
 function Read-Input([string]$prompt) {
     # 非交互时返回空串，由调用方走默认/取消分支，绝不阻塞
     if (-not $script:IsInteractive) { return "" }
+    # 嵌套启动 powershell.exe 时，直接从控制台 stdin 读整行，不依赖子宿主的 Read-Host 输入处理。
+    if ($Host.Name -eq 'ConsoleHost') {
+        Write-Host "$($prompt): " -NoNewline
+        $line = [Console]::ReadLine()
+        if ($null -eq $line) { throw "控制台输入已结束。可用 -Mods 1,2,3,4 明确指定编号，或直接运行 .\install_mods.ps1。" }
+        return $line
+    }
     return (Read-Host $prompt)
 }
 
 function Pause-Exit([int]$code = 0) {
-    if ($script:IsInteractive -and $script:UsedMenu) { Read-Host "按回车退出" | Out-Null }
+    if ($script:IsInteractive -and $script:UsedMenu) {
+        try { Read-Input "按回车退出" | Out-Null } catch { }
+    }
     exit $code
 }
 
@@ -139,24 +148,24 @@ function Ask-Mods {
     Write-Host "  [0] 取消"
     if (-not $script:IsInteractive) { return @() }
     $script:UsedMenu = $true
-    $raw = Read-Host "输入编号（逗号/空格分隔，如 1,2）"
-    $sel = @()
-    foreach ($tok in ($raw -split "[,\s，]+")) {
-        $n = 0
-        if ([int]::TryParse($tok, [ref]$n)) {
-            if ($n -eq 0) { return @() }
-            foreach ($m in $catalog) { if ($m.Id -eq $n) { $sel += $m } }
+    while ($true) {
+        $raw = Read-Input "输入编号（逗号/空格分隔，如 1,2；0 或空回车取消）"
+        try { return @(Parse-Mods $raw) }
+        catch {
+            Write-Host "输入无效：$($_.Exception.Message) 请重新输入，或输入 0 取消。" -ForegroundColor Yellow
         }
     }
-    return $sel
 }
-function Parse-Mods([string]$s) {
+function Parse-Mods([string[]]$s) {
     $sel = @()
-    foreach ($tok in ($s -split "[,\s，]+")) {
+    foreach ($tok in (($s -join ' ') -split "[,\s，、;；]+")) {
+        if ([string]::IsNullOrWhiteSpace($tok)) { continue }
         $n = 0
-        if ([int]::TryParse($tok, [ref]$n)) {
-            foreach ($m in $catalog) { if ($m.Id -eq $n) { $sel += $m } }
-        }
+        if (-not [int]::TryParse($tok, [ref]$n)) { throw "不是有效编号: $tok" }
+        if ($n -eq 0) { return @() }
+        $mod = $catalog | Where-Object { $_.Id -eq $n } | Select-Object -First 1
+        if (-not $mod) { throw "未知 mod 编号: $tok" }
+        if ($sel.Id -notcontains $n) { $sel += $mod }
     }
     return $sel
 }
@@ -541,7 +550,7 @@ using System.Reflection;
     if (-not (Test-Path $outDll)) { throw "csc 未生成产物: $outDll" }
 }
 
-function Publish-Mod($mod, [string]$game) {
+function Publish-Mod($mod, [string]$game, [switch]$Patcher) {
     $projDir = Join-Path $scriptRoot $mod.Project
     $dll = Join-Path $projDir "bin\Release\$($mod.Dll)"
     Write-Host ("[mod] 编译 {0} ..." -f $mod.Project) -ForegroundColor Yellow
@@ -584,7 +593,14 @@ function Publish-Mod($mod, [string]$game) {
     }
 
     if (-not (Test-Path $dll)) { throw "未找到产物: $dll" }
-    Copy-Item $dll (Join-Path $game "BepInEx\plugins\$($mod.Dll)") -Force
+    $folder = if ($Patcher) { "patchers" } else { "plugins" }
+    $destination = Join-Path $game "BepInEx\$folder"
+    New-Item -ItemType Directory -Path $destination -Force | Out-Null
+    Copy-Item $dll (Join-Path $destination $mod.Dll) -Force
+    if ($Patcher) {
+        Write-Host "[兼容] 已安装启动兼容补丁 -> $folder\$($mod.Dll)" -ForegroundColor Green
+        return
+    }
     # 配置文件：不存在才写默认
     $cfgDst = Join-Path $game "BepInEx\plugins\$($mod.Cfg)"
     if (-not (Test-Path $cfgDst)) {
@@ -663,72 +679,104 @@ function Default-Cfg([string]$proj) {
     }
 }
 
-function Invoke-AutoGenerateInterop([string]$game) {
+function Test-InteropReady([string]$game) {
     $interopDir = Join-Path $game "BepInEx\interop"
-    if (Test-Path $interopDir) {
-        Write-Host "[interop] 已存在，跳过生成。" -ForegroundColor DarkGray
-        return $true
+    foreach ($file in @("MaJiang.dll", "Il2Cppmscorlib.dll", "Il2CppSystem.Core.dll", "UnityEngine.CoreModule.dll",
+                        "UnityEngine.IMGUIModule.dll", "UnityEngine.TextRenderingModule.dll", "UnityEngine.UI.dll",
+                        "Unity.TextMeshPro.dll", "SaintsField.Runtime.dll", "assembly-hash.txt")) {
+        $path = Join-Path $interopDir $file
+        if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { return $false }
+        if ((Get-Item -LiteralPath $path).Length -eq 0) { return $false }
     }
+    return $true
+}
 
-    Write-Host "[interop] 未检测到 interop，将自动启动游戏生成..." -ForegroundColor Yellow
+function Test-InteropStartupLog([string[]]$lines) {
+    if ($lines -match 'Failed to generate Il2Cpp interop assemblies|Interop assemblies are possibly out of date|\[Fatal\s*:|Fatal error\.') {
+        return $false
+    }
+    return [bool]($lines -match 'Chainloader startup complete')
+}
+
+function Invoke-AutoGenerateInterop([string]$game) {
+    # 即使目录存在也必须启动检查：游戏更新后旧 interop 仍在，直接编译会使用过期 API。
+    Write-Host "[interop] 检查并更新游戏互操作程序集..." -ForegroundColor Yellow
     $exe = Join-Path $game "Demonic Mahjong.exe"
     if (-not (Test-Path $exe)) {
         Write-Host "[interop] 错误：找不到游戏可执行文件 $exe" -ForegroundColor Red
         return $false
     }
+    if (Get-Process -Name "Demonic Mahjong" -ErrorAction SilentlyContinue) {
+        Write-Host "[interop] 游戏正在运行，请先关闭游戏再安装。" -ForegroundColor Red
+        return $false
+    }
 
     $log = Join-Path $game "BepInEx\LogOutput.log"
-    # 移走旧日志（保留一份 .prev），确保后面的 -Tail 检测只看本次启动的输出
-    if (Test-Path $log) { Move-Item $log (Join-Path $game "BepInEx\LogOutput.prev.log") -Force }
+    $stamp = [Guid]::NewGuid().ToString("N")
+    foreach ($file in @("LogOutput.log", "ErrorLog.log")) {
+        $path = Join-Path $game "BepInEx\$file"
+        if (Test-Path $path) { Move-Item -LiteralPath $path -Destination "$path.prev.$stamp" }
+    }
 
-    Write-Host "  启动游戏（窗口将最小化，完成后自动关闭）..." -ForegroundColor DarkGray
-    $proc = Start-Process -FilePath $exe -PassThru -WindowStyle Minimized
-
-    $timeout = 120  # 秒，可根据网络速度调整
-    $start = Get-Date
+    # 旧插件可能引用已移除的 API；检查期间暂时移出加载器的 *.dll 搜索范围，结束后原样恢复。
+    $disabled = @()
+    $proc = $null
     $success = $false
-
-    while ((Get-Date) -lt $start.AddSeconds($timeout)) {
-        Start-Sleep -Milliseconds 500
-        if (Test-Path $log) {
-            # 读取末尾 50 行，避免大文件
-            $tail = Get-Content -Path $log -Tail 50 -ErrorAction SilentlyContinue
-            # 检测成功标志：Chainloader initialized 表示 interop 已生成且加载器完成
-            if ($tail -match "Chainloader initialized") {
-                $success = $true
-                break
-            }
-            # 检测失败标志（可选）
-            if ($tail -match "Failed to generate Il2Cpp interop assemblies") {
-                $success = $false
-                break
+    try {
+        foreach ($mod in $catalog) {
+            $path = Join-Path $game "BepInEx\plugins\$($mod.Dll)"
+            if (Test-Path $path) {
+                $backup = "$path.disabled.$stamp"
+                Move-Item -LiteralPath $path -Destination $backup
+                $disabled += [pscustomobject]@{ Path = $path; Backup = $backup }
             }
         }
+        Write-Host "  启动检查（无窗口，完整加载后自动关闭检查进程）..." -ForegroundColor DarkGray
+        $proc = Start-Process -FilePath $exe -WorkingDirectory $game -PassThru -WindowStyle Minimized `
+            -ArgumentList @('-batchmode', '-nographics', '-logFile', 'BepInEx/interop-generation-player.log')
+        # -quit 不是所有独立播放器都会处理的参数；不能等待自然退出，否则每次安装都会超时。
+        $deadline = (Get-Date).AddSeconds(300)
+        while ((Get-Date) -lt $deadline) {
+            Start-Sleep -Milliseconds 500
+            $proc.Refresh()
+            $lines = @()
+            if (Test-Path -LiteralPath $log) { $lines = @(Get-Content -LiteralPath $log -ErrorAction SilentlyContinue) }
+            if ($lines -match 'Failed to generate Il2Cpp interop assemblies|Interop assemblies are possibly out of date|\[Fatal\s*:|Fatal error\.') { break }
+            if ((Test-InteropReady $game) -and (Test-InteropStartupLog $lines)) {
+                # 已自然退出时还必须校验退出码；仍在运行则由本函数只关闭此检查进程。
+                $success = -not $proc.HasExited -or $proc.ExitCode -eq 0
+                break
+            }
+            if ($proc.HasExited) { break }
+        }
+        if (-not $proc.HasExited) {
+            Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+            [void]$proc.WaitForExit(10000)
+        }
+        if (-not $success) { Write-Host "  启动检查失败或超时，详见 $log 和 BepInEx\ErrorLog.log。" -ForegroundColor Red }
+
+        if (-not $success -and $script:IsInteractive) {
+            Write-Host "  请确认 Steam 已运行。若日志提示 interop 过期，先将 BepInEx.cfg 的 UpdateInteropAssemblies 改为 true。" -ForegroundColor Yellow
+            Write-Host "  手动启动游戏进入主菜单并退出，然后按回车重新检查（旧 mod 暂时停用）..." -ForegroundColor Yellow
+            Read-Input "按回车重新检查" | Out-Null
+            $lines = @(Get-Content -LiteralPath $log -ErrorAction SilentlyContinue)
+            $success = -not (Get-Process -Name "Demonic Mahjong" -ErrorAction SilentlyContinue) `
+                -and (Test-InteropReady $game) -and (Test-InteropStartupLog $lines)
+        }
+    }
+    catch {
+        Write-Host "[interop] 启动检查失败：$($_.Exception.Message)" -ForegroundColor Red
+    }
+    finally {
+        if ($proc -and -not $proc.HasExited) { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue }
+        foreach ($item in $disabled) {
+            Move-Item -LiteralPath $item.Backup -Destination $item.Path
+        }
     }
 
-    # 强制结束游戏进程（无论是否成功）
-    Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
-
-    if ($success) {
-        Write-Host "[interop] 生成成功！" -ForegroundColor Green
-        return $true
-    }
-    else {
-        Write-Host "[interop] 自动生成失败或超时。可能原因：网络慢、游戏启动需 Steam、反作弊拦截等。" -ForegroundColor Yellow
-        if ($script:IsInteractive) {
-            Write-Host "  请手动启动游戏一次（等待进入主菜单后退出），然后按回车继续..." -ForegroundColor Yellow
-            Read-Host | Out-Null
-        }
-        # 再次检查 interop 是否生成
-        if (Test-Path $interopDir) {
-            Write-Host "[interop] 检测到手动生成成功。" -ForegroundColor Green
-            return $true
-        }
-        else {
-            Write-Host "[interop] 仍未生成，编译 mod 可能会失败。" -ForegroundColor Red
-            return $false
-        }
-    }
+    if ($success) { Write-Host "[interop] 程序集完整，启动检查通过。" -ForegroundColor Green }
+    else { Write-Host "[interop] 未通过检查，停止安装，避免使用过期程序集。" -ForegroundColor Red }
+    return $success
 }
 
 function Uninstall-Mod($mod, [string]$game) {
@@ -742,8 +790,12 @@ function Uninstall-Mod($mod, [string]$game) {
 # ============ 主流程 ============
 if ($Uninstall) {
     $sel = @()
-    if ($Mods -ne "") { $sel = Parse-Mods $Mods } else { $sel = Ask-Mods }
-    if ($sel.Count -eq 0) { Write-Host "未选择任何 mod，退出。" -ForegroundColor DarkGray; Pause-Exit 0 }
+    try {
+        if ($Mods.Count -gt 0) { $sel = @(Parse-Mods $Mods) } else { $sel = @(Ask-Mods) }
+    }
+    catch { Write-Host "编号读取失败：$($_.Exception.Message)" -ForegroundColor Red; Pause-Exit 1 }
+    if ($sel.Count -eq 0) { Write-Host "未选择任何 mod，已取消卸载。" -ForegroundColor Yellow; Pause-Exit 0 }
+    Write-Host ("[卸载] 已选择: " + (($sel.Project) -join ", ")) -ForegroundColor Cyan
     $game = Resolve-GameDir
     if (-not $game) { Write-Host "未确定游戏目录，退出。" -ForegroundColor Red; Pause-Exit 1 }
     foreach ($m in $sel) { Uninstall-Mod $m $game }
@@ -756,6 +808,7 @@ if ($Uninstall) {
             }
             Write-Host "[卸载] BepInEx 框架已删除。" -ForegroundColor Green
         }
+        else { Write-Host "[卸载] 未确认删除，保留 BepInEx 框架。" -ForegroundColor Yellow }
     }
     Write-Host "卸载完成。" -ForegroundColor Green
     Pause-Exit 0
@@ -763,7 +816,10 @@ if ($Uninstall) {
 
 # 安装
 $sel = @()
-if ($Mods -ne "") { $sel = Parse-Mods $Mods } else { $sel = Ask-Mods }
+try {
+    if ($Mods.Count -gt 0) { $sel = @(Parse-Mods $Mods) } else { $sel = @(Ask-Mods) }
+}
+catch { Write-Host "编号读取失败：$($_.Exception.Message)" -ForegroundColor Red; Pause-Exit 1 }
 if ($sel.Count -eq 0) {
     Write-Host "未选择任何 mod，跳过依赖安装并退出。" -ForegroundColor DarkGray
     Pause-Exit 0
@@ -772,6 +828,11 @@ Write-Host ("已选择: " + (($sel.Project) -join ", ")) -ForegroundColor Cyan
 
 $game = Resolve-GameDir
 if (-not $game) { Write-Host "未确定游戏目录，退出。" -ForegroundColor Red; Pause-Exit 1 }
+
+if (Get-Process -Name "Demonic Mahjong" -ErrorAction SilentlyContinue) {
+    Write-Host "游戏正在运行，请先关闭游戏再安装。" -ForegroundColor Red
+    Pause-Exit 1
+}
 
 if (-not $SkipBepInEx) {
     if (-not (Install-BepInEx $game)) {
@@ -786,14 +847,19 @@ else {
 # 隐藏 BepInEx 控制台（无论是否新装）
 Disable-Console $game
 
-# 自动生成 interop（如果缺失）
-Invoke-AutoGenerateInterop $game
-
-# 继续编译 mod
-$interop = Join-Path $game "BepInEx\interop"
-if (-not (Test-Path $interop)) {
-    Write-Host "  ⚠ BepInEx\interop 缺失：如首次装 BepInEx，需先启动一次游戏生成 interop/，否则下面 mod 编译会失败。" -ForegroundColor Yellow
+# 兼容补丁必须先安装：普通 mod 的 Load 晚于框架自身的 Unity 日志委托注册。
+try {
+    Publish-Mod ([pscustomobject]@{ Project = "Compatibility"; Dll = "DemonicMahjong.Compatibility.dll" }) $game -Patcher
 }
+catch {
+    Write-Host "启动兼容补丁安装失败：$($_.Exception.Message)" -ForegroundColor Red
+    Pause-Exit 1
+}
+
+# 启动时让 BepInEx 检查版本并重建 interop；失败必须中止，不能仅判断目录存在。
+if (-not (Invoke-AutoGenerateInterop $game)) { Pause-Exit 1 }
+# 首次启动才生成配置，因此检查后再隐藏一次控制台。
+Disable-Console $game
 
 $fail = @()
 foreach ($m in $sel) {
@@ -802,6 +868,7 @@ foreach ($m in $sel) {
 
 if ($fail.Count -gt 0) {
     Write-Host ("安装完成，但以下 mod 编译失败: " + ($fail -join ", ")) -ForegroundColor Yellow
+    Pause-Exit 1
 } else {
     Write-Host "全部安装完成。" -ForegroundColor Green
 }

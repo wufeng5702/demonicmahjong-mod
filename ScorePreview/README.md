@@ -73,7 +73,7 @@ debug: false    # true = 输出 [diag]/[scene]/[deep] 诊断日志（定位读�
 ## 兼容性
 
 - **游戏版本**：Unity 6000.3.21f1（IL2CPP）《Demonic Mahjong》。
-- **依赖**：BepInEx 6.0.0-be.785 或更高版本。
+- **依赖**：BepInEx 6.0.0-be.791；月圆奇谭版本还需本仓库的 `Compatibility` 启动补丁（安装器自动处理）。
 - **冲突**：与 `SLMenuTrigger`、`AutoContinue` 等插件无已知冲突。
 
 ## 已知问题
@@ -114,5 +114,5 @@ ScorePreview/
 
 ## 游戏更新后
 
-BepInEx 每次启动会自动重新生成 `interop/`。若签名变化导致编译失败，重跑 `build.bat` + `install.bat`；若 UI 结构变了导致读不到 FanNum/Total，先看日志里 `Diag: uiFanMin=`/`Diag: jfFan=` 是否消失，再把 `debug: true` 打开看 `[scene]`/`[deep]` 的扫描转储即可定位。
+BepInEx 启动时检查并更新过期的 `interop/`。月圆奇谭版本的当前结算面板从 `PlayerRoundStatistics._curHuPaiJieSuan` 读取，不再依赖已移除的 `HuPaiJieSuan` 属性。关闭游戏后重跑根目录的 `install_mods.bat` 即可更新启动补丁和插件；若 UI 结构变了导致读不到 FanNum/Total，先看日志里 `Diag: uiFanMin=`/`Diag: jfFan=` 是否消失，再把 `debug: true` 打开看 `[scene]`/`[deep]` 的扫描转储即可定位。
 

@@ -35,6 +35,9 @@
 
 ## 配置 — `BepInEx\plugins\LingPreview.yml`
 
+月圆奇谭版本需 BepInEx `be.791` 和本仓库的 `Compatibility` 启动补丁。
+关闭游戏后运行根目录的 `install_mods.bat` 可自动安装、更新，勿将 DLL 放进 `Custom/Mods`。
+
 ```yaml
 enabled: true    # 是否显示提示面板
 fontsize: 18     # 面板字体大小

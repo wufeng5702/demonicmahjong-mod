@@ -14,12 +14,15 @@
 | **AutoContinue** | 自动跳过公告【继续】与对局【点击继续】 | `AutoSkip.cs` |
 | **LingPreview** | 幻灵台附牌灵时提示变换效果（象/鼠/马灵逐牌对照） | `LingPanel.cs` / `LingTai.cs` |
 
+启动兼容补丁在 `Compatibility/`，安装到 `BepInEx/patchers/DemonicMahjong.Compatibility.dll`；
+不是第五个可选 Mod。它只引用框架，所以可以在 interop 生成前编译。
+
 共享工具库在 `Shared/`（`StringTruncator` / `NumberParser` / `TransformPath` / `YamlConfig` /
 `FanTextParser` / `ScoreFormula` / `UiText` / `LingRules` / `GitVersion`），各 `.csproj` 通过
 `<Compile Include="..\Shared\*.cs" />` 引入，其中只有 `TransformPath` 依赖 UnityEngine。
 纯函数另有 `Shared.Tests/`（xunit，net8.0，不依赖 interop），见下「验证口径」。
 
-**版本号唯一事实源是 `Shared/GitVersion.cs`**：四个 csproj 的 `<Version>` 必须与它一致，
+**版本号唯一事实源是 `Shared/GitVersion.cs`**：四个 Mod 和 Compatibility 的 `<Version>` 必须与它一致，
 release.yml 发版时把 tag 写进两者（tag 格式 `vX.Y.Z`），本地改版本用 `set-version.ps1`（不入库）。
 
 个人路径全部走 `.env`（仓库根 `mod/.env`，已 gitignore）：`DEMONIC_MAHJONG_DIR`。
@@ -34,6 +37,7 @@ mod/
   Shared/                  共享工具库（StringTruncator / NumberParser / TransformPath / YamlConfig /
                            FanTextParser / ScoreFormula / UiText / LingRules / GitVersion）
   Shared.Tests/            纯函数单元测试（xunit，不编 mod、不碰 interop）
+  Compatibility/           HybridCLR 启动兼容补丁（Preloader Finalizer，早于插件 Load）
   ScorePreview/            分数预览 mod（csproj/ScoreHud/Prediction/README）
   SLMenuTrigger/           自动暂停 mod（csproj/SLMenuTrigger/Plugin/README）
   AutoContinue/            自动跳过 mod（csproj/AutoSkip/README）
@@ -42,6 +46,7 @@ mod/
   tools/modbat/            四个 mod 的 build.bat/install.bat 共用驱动；不放根目录，免得被当成入口
                            （包装里只传 mod 名；注意别用 shift —— shift 会连 %0 一起移，%~dp0 就错了）
   tools/dumptypes/         类型探查工具（Mono.Cecil 读 interop 公有成员；libs/ 为本地拷贝库，不入库）
+  tools/tests/             安装器回归测试（用假进程，不启动/停止真实游戏）
   tools/run_game_linux.sh  Linux(Proton) 启动脚本：确保 winhttp=n,b 生效，否则 BepInEx 不加载（见坑 17）
   tools/compiler-licenses/ 捆绑编译器许可文本（release.yml 打包时复制进 tools\compiler\）
   tools/compiler/          捆绑编译器（release 包内才有，不入库；csc.exe + ref\<tfm>\ 引用程序集）
@@ -52,7 +57,7 @@ mod/
 ```powershell
 # 游戏目录来源：命令行参数 > 环境变量 DEMONIC_MAHJONG_DIR > .env 同名字段 > 旧硬编码兜底
 # 1) 一键安装/卸载（交互式选 mod + Steam 自动探测 + BepInEx 依赖自动补装）
-#    BepInEx 版本探测：读 core\BepInEx.Core.dll 的 ProductVersion 取 be 构建号，低于 be.785 会询问
+#    BepInEx 版本探测：读 core\BepInEx.Core.dll 的 ProductVersion 取 be 构建号，低于 be.791 会询问
 #    是否覆盖升级（升级前清 core/patchers，保留 config/plugins/interop，升级后清 cache 并复核版本）
 .\install_mods.bat
 #    非交互：.\install_mods.bat   （对 install_mods.ps1 透传参数）
@@ -72,6 +77,8 @@ taskkill //F //IM "Demonic Mahjong.exe"   # exe 名带空格！勿用错名
 
 # 4) 纯函数单元测试（改 Shared/ 后必跑；不需要游戏目录）
 dotnet test Shared.Tests/Shared.Tests.csproj
+powershell -File tools/tests/installer.Tests.ps1
+powershell -File tools/tests/installer-cli.Tests.ps1
 
 # 5) 启动游戏并验证
 start "" "%DEMONIC_MAHJONG_DIR%\Demonic Mahjong.exe"
@@ -101,9 +108,11 @@ grep -aE "ScorePreview|SLMenuTrigger|AutoContinue|LingPreview|ting hook|Error" "
 确认 `BepInEx\` + `BepInEx\core\BepInEx.Core.dll` 存在才允许动目标目录——否则坏包会把已有
 安装改坏。GitHub 镜像代理（如 gh.ddlc.top）只反代 github.com，对 `builds.bepinex.dev` /
 `api.nuget.org` 无意义，不要依赖。首次装 BepInEx 后 interop/ 未生成，mod 编译必失败 →
-`install_mods.ps1` 检测到缺失时会**自动生成**：最小化启动游戏，等日志出现
-`Chainloader initialized` 后强杀进程（`Invoke-AutoGenerateInterop`；超时/Steam 拦截时会退化为
-提示手动启动一次游戏再继续）。也可手动启动一次游戏，或用同版本开发拷贝的 `BepInEx\interop` +
+`install_mods.ps1` 会先安装 Compatibility，再**始终检查/刷新** interop：暂时将四个旧插件改成
+非 DLL 后缀，使用 `-batchmode -nographics` 和游戏根工作目录启动，完整加载后只关闭检查进程；
+要求 `Chainloader startup complete`、关键程序集和 assembly-hash.txt 完整（已自然退出还要求退出码 0），
+且没有生成失败/过期日志。不能仅看目录或 `Chainloader initialized`。检查后原样恢复旧插件，
+失败则停止安装；交互模式可提示手动启动主菜单再退出。也可用同版本开发拷贝的 `BepInEx\interop` +
 `unity-libs` + `config` 补齐。
 
 捆绑编译器（release.yml 的 `Fetch bundled compiler` 步骤，打包前执行，产物只进 zip 不入库）：
@@ -175,7 +184,7 @@ grep -aE "ScorePreview|SLMenuTrigger|AutoContinue|LingPreview|ting hook|Error" "
   IReadOnlyList<HuResult>>)`（场景 MonoBehaviour 公有方法）。开牌/未听以空字典调用；真听有数据。
   Harmony：`[HarmonyPatch(typeof(PlayerPipeline), nameof(PlayerPipeline.OnProcessTingResult))]` Prefix。
 - Tuple 四元组原生可读：天然 `(底分?, 番, 倍率, …)`，`Item2`=倍率（0.9/2.25/2.81 与结算一致）。
-- **结算面板**：`HuPaiJieSuan`（RoundStatistics 下），`MultiplyNumbers` 数组 +
+- **结算面板**：`PlayerRoundStatistics._curHuPaiJieSuan`（旧 `HuPaiJieSuan` 属性在月圆奇谭版本已移除），`MultiplyNumbers` 数组 +
   `_curNumbers`(List<Decimal>) + `_totalNumber`(Decimal) + `TweenMultiplyNumbersNumber(int,float,Decimal)`
   数字动画。面板出现时 TMP 含 `sprite name`/`底分`/`倍率`/`Title`/`计分视为打出` 等签名。
 - HashSet/HuResult 桶链取值：
@@ -237,7 +246,18 @@ grep -aE "ScorePreview|SLMenuTrigger|AutoContinue|LingPreview|ting hook|Error" "
     `BepInEx\LogOutput.log` 连时间戳都不更新（看起来像"mod 没装"）。
     症状：游戏能玩、日志停在旧时间、插件列表里没有自己的 mod。
     解法：前缀里写 `HKCU\Software\Wine\DllOverrides` → `winhttp="n,b"`（对所有启动方式生效），
-    仓库里 `tools/run_game_linux.sh` 会自动检查并补写。
+     仓库里 `tools/run_game_linux.sh` 会自动检查并补写。
+18. **月圆奇谭引入 HybridCLR**：Unity 6000.3.21f1 / metadata v39，be.791 的 Cpp2IL 能正常生成，
+    但无插件也会在 `MetadataCache_GetTypeInfoFromTypeDefinitionIndex_Hook.Hook(Int32)` 崩溃。
+    xref 遍历误把 HybridCLR 的类型句柄路径当成整数索引函数，指针被截断。`Compatibility`
+    在 Preloader Finalizer 只移除 Setup 中该钩子的安装调用，其他注入路径不变；普通插件 Load 太晚。
+    生效范围限定 Unity 6.3 + HybridCLR.Runtime.dll + Il2CppInterop 1.5.3，参见上游 #260。
+    `Class::Init ... using a substitute` 警告可保留，不要为消除警告改其他原生钩子。
+    `Custom/Dlcs`、`Custom/Mods` 是游戏 SDK 内容目录，不是 BepInEx 插件目录。
+    独立播放器不会可靠处理 `-quit`；安装器应等待完整加载标记后关闭自己启动的进程，不要等自然退出。
+19. **托管辅助方法不应导出到 IL2CPP**：MonoBehaviour 上使用 CLR List/数组/自定义 enum 的方法
+    应加 `[HideFromIl2Cpp]`，否则注册时出现 unsupported parameter / Assembly LingPreview.dll
+    is not registered。Unity 的 Awake/Update/OnGUI 等生命周期方法不能隐藏。
 
 ## 工具 / 常用命令
 
@@ -273,3 +293,7 @@ dumptypes 用法细节：
 - 提交信息格式：`feat/fix/chore: 简要描述`
 - 改 `Shared/` 纯函数 → 补/改 `Shared.Tests/` 用例并跑 `dotnet test`（CI 会跑同一命令）。
 - 四个 mod 目录下 `dotnet build` 必须 **0 警告 0 错误** 才算改完。
+- 改安装器参数或菜单 → 跑 `tools/tests/installer-cli.Tests.ps1`；它在临时假游戏目录中真实调用
+  PowerShell 5.1，验证 `-u/-Uninstall/-RemoveBepInEx/-Mods`、交互输入、取消/重试及 EOF。
+  `-Mods` 是 string[]，主流程需用 `@(...)` 收集结果（PS 5.1 单个 PSCustomObject 没有 Count）。
+  非 ASCII 的 .ps1 必须保留 UTF-8 BOM，避免 Windows PowerShell 5.1 错解码。

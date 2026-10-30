@@ -19,13 +19,13 @@ jobs:
               uses: actions/checkout@v7
 
             # 版本唯一事实来源 = git tag；GitVersion.cs（插件显示版本）与四个 csproj 的
-            # <Version>（AssemblyVersion 来源）一起改，避免两套版本号漂移。
+            # <Version>（AssemblyVersion 来源）与启动补丁一起改，避免两套版本号漂移。
             - name: Write GitVersion
               run: |
                 set -e
                 VER="${GITHUB_REF_NAME#v}"
                 echo "static class GitVersion { internal const string Version = \"${VER}+${GITHUB_SHA::7}\"; }" > "Shared/GitVersion.cs"
-                for f in ScorePreview/ScorePreview.csproj AutoContinue/AutoContinue.csproj SLMenuTrigger/SLMenuTrigger.csproj LingPreview/LingPreview.csproj; do
+                for f in ScorePreview/ScorePreview.csproj AutoContinue/AutoContinue.csproj SLMenuTrigger/SLMenuTrigger.csproj LingPreview/LingPreview.csproj Compatibility/Compatibility.csproj; do
                   sed -i "s|<Version>[^<]*</Version>|<Version>${VER}</Version>|" "$f"
                 done
                 grep -h "<Version>" ScorePreview/ScorePreview.csproj

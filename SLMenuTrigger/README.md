@@ -58,7 +58,7 @@ fontsize: 24     # 提示框字体大小
 ## 兼容性
 
 - **游戏版本**：Unity 6000.3.21f1（IL2CPP）《Demonic Mahjong》。
-- **依赖**：BepInEx 6.0.0-be.785 或更高版本。
+- **依赖**：BepInEx 6.0.0-be.791；月圆奇谭版本还需本仓库的 `Compatibility` 启动补丁（安装器自动处理）。
 - **冲突**：与 `ScorePreview`、`AutoContinue` 等插件无已知冲突。
 
 > ⚠️ 游戏 UI 路径在后续更新中变化时，可能需要更新 `PlayerPath`、`AiPath`、`DeckPath`、`BossDeckPath` 常量。
