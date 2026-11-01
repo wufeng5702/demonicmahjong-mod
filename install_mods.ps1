@@ -5,13 +5,17 @@
    powershell -ExecutionPolicy Bypass -File install_mods.ps1            # 交互式
    powershell -ExecutionPolicy Bypass -File install_mods.ps1 -Mods 1,2  # 直接装 1+2
    powershell -ExecutionPolicy Bypass -File install_mods.ps1 -u         # 卸载（询问哪些）
-   powershell -ExecutionPolicy Bypass -File install_mods.ps1 -u -RemoveBepInEx   # 卸载并删 BepInEx
+    powershell -ExecutionPolicy Bypass -File install_mods.ps1 -u -RemoveBepInEx   # 卸载并删 BepInEx
+    powershell -ExecutionPolicy Bypass -File install_mods.ps1 -CheckUpdate       # 检查发布版本
+    powershell -ExecutionPolicy Bypass -File install_mods.ps1 -Update            # 更新已安装 Mod
 
  参数：
    -Mods <string[]>  mod 编号（支持 1,2 或数组），给则跳过交互菜单
    -u / -Uninstall   卸载模式：移除已装 mod 的 dll/配置文件
    -RemoveBepInEx    卸载时一并删除 BepInEx 框架与前置（winhttp/doorstop/dotnet）
-   -SkipBepInEx      安装时跳过 BepInEx 依赖安装（仅装 mod 本体）
+    -SkipBepInEx      安装时跳过 BepInEx 依赖安装（仅装 mod 本体）
+    -CheckUpdate     检查最新 Release、当前项目和已安装 Mod 的版本
+    -Update          下载最新 Release，调用新版安装器更新已安装的旧版 Mod
    -GameDir <string> 手动指定游戏目录（默认自动探测：Steam 注册表/libraryfolders → 仓库根 .env）
    -Compiler <auto|sdk|csc>  编译 mod 用的编译器。auto(默认)=有 .NET SDK 用 SDK，
                              没有则用 release 包自带的 tools\compiler（csc + net6.0 引用程序集）
@@ -27,6 +31,8 @@ param(
     [switch]$Uninstall,
     [switch]$RemoveBepInEx,
     [switch]$SkipBepInEx,
+    [switch]$CheckUpdate,
+    [switch]$Update,
     [string]$GameDir = "",
     [ValidateSet('auto', 'sdk', 'csc')]
     [string]$Compiler = 'auto'
@@ -51,6 +57,7 @@ if ($u) { $Uninstall = $true }
 # 带 -Mods 的批处理调用也不该在结束时停下来等回车（README 承诺的非交互用法）。
 $script:IsInteractive = -not [Console]::IsInputRedirected
 $script:UsedMenu = $false          # 只有走过 Ask-Mods 才在结束时 pause
+$script:UpdateAction = ''
 
 function Read-Input([string]$prompt) {
     # 非交互时返回空串，由调用方走默认/取消分支，绝不阻塞
@@ -140,17 +147,25 @@ function Resolve-GameDir {
     return $manual
 }
 
-function Ask-Mods {
+function Ask-Mods([switch]$AllowUpdate) {
     Write-Host ""
     Write-Host "选择要操作的 mod（可多选）:"
     foreach ($m in $catalog) {
         Write-Host ("  [{0}] {1}  ——  {2}" -f $m.Id, $m.Project, $m.Desc)
+    }
+    if ($AllowUpdate) {
+        Write-Host "  [C] 检查更新"
+        Write-Host "  [U] 更新已安装 Mod"
     }
     Write-Host "  [0] 取消"
     if (-not $script:IsInteractive) { return @() }
     $script:UsedMenu = $true
     while ($true) {
         $raw = Read-Input "输入编号（逗号/空格分隔，如 1,2；0 或空回车取消）"
+        if ($AllowUpdate -and $raw.Trim() -match '^[cu]$') {
+            $script:UpdateAction = $raw.Trim().ToUpperInvariant()
+            return @()
+        }
         try { return @(Parse-Mods $raw) }
         catch {
             Write-Host "输入无效：$($_.Exception.Message) 请重新输入，或输入 0 取消。" -ForegroundColor Yellow
@@ -169,6 +184,161 @@ function Parse-Mods([string[]]$s) {
         if ($sel.Id -notcontains $n) { $sel += $mod }
     }
     return $sel
+}
+
+# ============ 更新器 ============
+function ConvertTo-ModVersion([string]$text) {
+    $version = $null
+    $number = ($text.Trim() -replace '^v', '') -split '\+', 2 | Select-Object -First 1
+    if (-not [version]::TryParse($number, [ref]$version) -or $version.Build -lt 0) {
+        throw "无法识别版本号: $text"
+    }
+    return [version]::new($version.Major, $version.Minor, $version.Build, [Math]::Max(0, $version.Revision))
+}
+
+function Get-ProjectVersion([string]$root) {
+    $text = [IO.File]::ReadAllText((Join-Path $root 'Shared\GitVersion.cs'))
+    if ($text -notmatch 'Version\s*=\s*"([^"]+)"') { throw "项目缺少有效 GitVersion: $root" }
+    return ConvertTo-ModVersion $matches[1]
+}
+
+function Get-ModFileVersion([string]$file) {
+    try { return ConvertTo-ModVersion ([Diagnostics.FileVersionInfo]::GetVersionInfo($file).FileVersion) }
+    catch { return $null }
+}
+
+function Get-InstalledMods([string]$game) {
+    foreach ($mod in $catalog) {
+        $file = Join-Path $game "BepInEx\plugins\$($mod.Dll)"
+        if (Test-Path -LiteralPath $file -PathType Leaf) {
+            [pscustomobject]@{ Id = $mod.Id; Project = $mod.Project; Dll = $mod.Dll; Cfg = $mod.Cfg; Version = (Get-ModFileVersion $file) }
+        }
+    }
+}
+
+function Get-LatestModRelease {
+    try {
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+        $response = Invoke-WebRequest -Uri 'https://api.github.com/repos/wufeng5702/demonicmahjong-mod/releases/latest' `
+            -TimeoutSec 15 -UserAgent 'demonic-mahjong-mod-installer' -UseBasicParsing
+        $release = $response.Content | ConvertFrom-Json
+        if ($release.draft -or $release.prerelease -or $release.tag_name -notmatch '^v?\d+\.\d+\.\d+$') {
+            throw 'Release 不包含有效的稳定版本号'
+        }
+        return [pscustomobject]@{ Tag = $release.tag_name; Version = (ConvertTo-ModVersion $release.tag_name) }
+    }
+    catch {
+        Write-Host "[更新] GitHub API 不可用，改从发布包读取版本：$($_.Exception.Message)" -ForegroundColor Yellow
+        return $null
+    }
+}
+
+function Get-ModReleasePackage([string]$work, $release) {
+    $route = if ($release) { "releases/download/$($release.Tag)" } else { 'releases/latest/download' }
+    $asset = "https://github.com/wufeng5702/demonicmahjong-mod/$route/DemonicMahjongMod.zip"
+    $sources = @('', 'https://gh.monlor.com/', 'https://git.yylx.win/', 'https://github.geekery.cn/')
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    for ($i = 0; $i -lt $sources.Count; $i++) {
+        $attempt = Join-Path $work "source-$i"
+        $zip = Join-Path $attempt 'DemonicMahjongMod.zip'
+        $sum = "$zip.sha256"
+        $content = Join-Path $attempt 'content'
+        $label = if ($sources[$i]) { $sources[$i] } else { 'GitHub' }
+        Write-Host "[更新] 下载源: $label" -ForegroundColor Cyan
+        try {
+            New-Item -ItemType Directory -Path $attempt -Force | Out-Null
+            Invoke-WebRequest -Uri ($sources[$i] + $asset + '.sha256') -OutFile $sum -TimeoutSec 20 `
+                -UserAgent 'demonic-mahjong-mod-installer' -UseBasicParsing
+            $checksum = [IO.File]::ReadAllText($sum).Trim()
+            if ($checksum -notmatch '\A([0-9a-fA-F]{64})[ \t]+\*?DemonicMahjongMod\.zip\z') { throw 'SHA256 文件格式无效' }
+            $expected = $matches[1]
+            Invoke-WebRequest -Uri ($sources[$i] + $asset) -OutFile $zip -TimeoutSec 180 `
+                -UserAgent 'demonic-mahjong-mod-installer' -UseBasicParsing
+            if ((Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash -ne $expected) { throw '发布包 SHA256 不匹配' }
+
+            # 在解压前校验全部路径，避免损坏或异常压缩包向临时目录之外写入。
+            $archive = [IO.Compression.ZipFile]::OpenRead($zip)
+            try {
+                $prefix = [IO.Path]::GetFullPath($content) + [IO.Path]::DirectorySeparatorChar
+                foreach ($entry in $archive.Entries) {
+                    $name = $entry.FullName.Replace('/', '\')
+                    $dest = [IO.Path]::GetFullPath((Join-Path $content $name))
+                    if ($name.Contains(':') -or [IO.Path]::IsPathRooted($name) -or
+                        -not $dest.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase)) { throw '发布包包含越界路径' }
+                }
+            }
+            finally { $archive.Dispose() }
+            Expand-Archive -LiteralPath $zip -DestinationPath $content
+            foreach ($file in @('install_mods.ps1', 'Shared\GitVersion.cs', 'Compatibility\Compatibility.csproj',
+                                'tools\compiler\csc.exe', 'tools\compiler\ref\net6.0\System.Runtime.dll')) {
+                if (-not (Test-Path -LiteralPath (Join-Path $content $file) -PathType Leaf)) { throw "发布包缺少 $file" }
+            }
+            $version = Get-ProjectVersion $content
+            if ($release -and $version -ne $release.Version) { throw '发布包版本与 Release 标签不一致' }
+            return [pscustomobject]@{ Directory = $content; Version = $version }
+        }
+        catch {
+            Write-Host "[更新] $label 失败，尝试下一下载源：$($_.Exception.Message)" -ForegroundColor Yellow
+            if (Test-Path -LiteralPath $attempt) { Remove-Item -LiteralPath $attempt -Recurse -Force }
+        }
+    }
+    throw '所有下载源均失败，未执行更新。请检查网络后重试。'
+}
+
+function Invoke-ReleaseInstaller([string]$root, [string]$game, [object[]]$targets) {
+    $arguments = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $root 'install_mods.ps1'),
+                   '-Mods', ($targets.Id -join ','), '-GameDir', $game, '-Compiler', $Compiler)
+    if ($SkipBepInEx) { $arguments += '-SkipBepInEx' }
+    # 子进程只接收安装参数，不传 -Update，避免新版安装器再次下载自身。
+    $result = Invoke-Tool (Get-Command powershell.exe).Source $arguments
+    foreach ($line in $result.Lines) { Write-Host $line }
+    if ($result.Code -ne 0) { throw "新版安装器失败（exit $($result.Code)），请根据上方日志重试。" }
+}
+
+function Invoke-ModUpdate([switch]$CheckOnly) {
+    $projectVersion = Get-ProjectVersion $scriptRoot
+    $game = if ($CheckOnly -and -not $GameDir) { Find-GameDir } else { Resolve-GameDir }
+    if (-not $CheckOnly -and -not $game) { throw '未确定游戏目录，无法更新。' }
+    $installed = @(if ($game) { Get-InstalledMods $game })
+    if (-not $CheckOnly) {
+        if (-not $installed.Count) { Write-Host '[更新] 未发现已安装的本仓库 Mod。'; return }
+        if (Get-Process -Name 'Demonic Mahjong' -ErrorAction SilentlyContinue) { throw '游戏正在运行，请关闭游戏后更新。' }
+    }
+    $work = Join-Path $env:TEMP ('demonic_mod_update_' + [Guid]::NewGuid().ToString('N'))
+    try {
+        $release = Get-LatestModRelease
+        $package = $null
+        if ($release) { $latest = $release.Version }
+        else { $package = Get-ModReleasePackage $work $null; $latest = $package.Version }
+        Write-Host "[更新] 当前项目: $projectVersion；最新 Release: $latest" -ForegroundColor Cyan
+        foreach ($mod in $installed) {
+            $label = if ($mod.Version) { "$($mod.Version)" } else { '未知' }
+            Write-Host "  $($mod.Project): $label"
+        }
+        if ($latest -lt $projectVersion) { Write-Host '[更新] 发布版本早于当前项目，跳过以避免降级。'; return }
+        $targets = @($installed | Where-Object { $null -eq $_.Version -or $_.Version -lt $latest })
+        if ($CheckOnly) {
+            if ($latest -gt $projectVersion) { Write-Host '[更新] 项目有新发布版本，可下载 Release 获取新版项目。' }
+            if ($targets.Count) { Write-Host ('[更新] 可更新: ' + ($targets.Project -join ', ') + '；运行 -Update 执行。') }
+            else { Write-Host '[更新] 没有需要更新的已安装 Mod。' }
+            return
+        }
+        if (-not $targets.Count) { Write-Host '[更新] 已安装 Mod 已是最新或更高版本。'; return }
+        if (-not $package) { $package = Get-ModReleasePackage $work $release }
+        foreach ($mod in $targets) {
+            if (-not (Test-Path -LiteralPath (Join-Path $package.Directory "$($mod.Project)\$($mod.Project).csproj"))) {
+                throw "新版项目缺少 $($mod.Project)，停止更新。"
+            }
+        }
+        if (Get-Process -Name 'Demonic Mahjong' -ErrorAction SilentlyContinue) { throw '下载期间游戏已启动，请关闭游戏后重试。' }
+        Write-Host ('[更新] 更新已安装 Mod: ' + ($targets.Project -join ', ')) -ForegroundColor Cyan
+        Invoke-ReleaseInstaller $package.Directory $game $targets
+        Write-Host '[更新] 已安装 Mod 更新完成，已有 YAML 配置由安装器保留。' -ForegroundColor Green
+    }
+    finally {
+        if (Test-Path -LiteralPath $work) { Remove-Item -LiteralPath $work -Recurse -Force }
+    }
 }
 
 # 隐藏 BepInEx 控制台
@@ -797,6 +967,14 @@ function Uninstall-Mod($mod, [string]$game) {
 }
 
 # ============ 主流程 ============
+if (($CheckUpdate -and $Update) -or (($CheckUpdate -or $Update) -and ($Uninstall -or $RemoveBepInEx -or $Mods.Count))) {
+    Write-Host '更新参数不能与卸载、-Mods 或另一更新模式同时使用。' -ForegroundColor Red
+    Pause-Exit 1
+}
+if ($CheckUpdate -or $Update) {
+    try { Invoke-ModUpdate -CheckOnly:$CheckUpdate; Pause-Exit 0 }
+    catch { Write-Host "[更新] $($_.Exception.Message)" -ForegroundColor Red; Pause-Exit 1 }
+}
 if ($Uninstall) {
     $sel = @()
     try {
@@ -826,9 +1004,13 @@ if ($Uninstall) {
 # 安装
 $sel = @()
 try {
-    if ($Mods.Count -gt 0) { $sel = @(Parse-Mods $Mods) } else { $sel = @(Ask-Mods) }
+    if ($Mods.Count -gt 0) { $sel = @(Parse-Mods $Mods) } else { $sel = @(Ask-Mods -AllowUpdate) }
 }
 catch { Write-Host "编号读取失败：$($_.Exception.Message)" -ForegroundColor Red; Pause-Exit 1 }
+if ($script:UpdateAction) {
+    try { Invoke-ModUpdate -CheckOnly:($script:UpdateAction -eq 'C'); Pause-Exit 0 }
+    catch { Write-Host "[更新] $($_.Exception.Message)" -ForegroundColor Red; Pause-Exit 1 }
+}
 if ($sel.Count -eq 0) {
     Write-Host "未选择任何 mod，跳过依赖安装并退出。" -ForegroundColor DarkGray
     Pause-Exit 0

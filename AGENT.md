@@ -82,6 +82,7 @@ taskkill //F //IM "Demonic Mahjong.exe"   # exe 名带空格！勿用错名
 dotnet test Shared.Tests/Shared.Tests.csproj
 powershell -File tools/tests/installer.Tests.ps1
 powershell -File tools/tests/installer-cli.Tests.ps1
+powershell -File tools/tests/updater.Tests.ps1
 
 # 5) 启动游戏并验证
 start "" "%DEMONIC_MAHJONG_DIR%\Demonic Mahjong.exe"
@@ -306,3 +307,7 @@ dumptypes 用法细节：
   PowerShell 5.1，验证 `-u/-Uninstall/-RemoveBepInEx/-Mods`、交互输入、取消/重试及 EOF。
   `-Mods` 是 string[]，主流程需用 `@(...)` 收集结果（PS 5.1 单个 PSCustomObject 没有 Count）。
   非 ASCII 的 .ps1 必须保留 UTF-8 BOM，避免 Windows PowerShell 5.1 错解码。
+- 更新器在 `install_mods.ps1`：`-CheckUpdate` / `-Update`，安装菜单 C/U；只更新已安装的旧版 Mod。
+  下载依次尝试 GitHub、gh.monlor.com、git.yylx.win、github.geekery.cn；API 不通则从校验后的 latest 包读取版本。
+  已知 Release 时固定标签下载，核对 SHA256、包路径/结构/版本后从临时目录执行新版安装器；禁止降级当前项目或较新 Mod。
+  `tools/tests/updater.Tests.ps1` 用真实 ZIP 和文件、模拟网络/子安装器覆盖失败回退、配置保留与临时目录清理。

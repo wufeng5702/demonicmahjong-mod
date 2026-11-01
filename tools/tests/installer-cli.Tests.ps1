@@ -3,6 +3,10 @@ param([string]$TempRoot = $env:TEMP)
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $source = [IO.File]::ReadAllText((Join-Path $repo 'install_mods.ps1'))
+# Override the update action only in fixtures; keep real CLI/menu routing without network access.
+$marker = '# ============ ' + [char]0x4e3b + [char]0x6d41 + [char]0x7a0b + ' ============'
+$source = $source.Replace($marker,
+    'function Invoke-ModUpdate([switch]$CheckOnly) { Write-Host "fixture-update:$CheckOnly" }' + "`n" + $marker)
 $root = Join-Path $TempRoot ('demonic-installer-cli-' + [Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $root | Out-Null
 $plain = Join-Path $root 'install.ps1'
@@ -62,6 +66,15 @@ function Test-Uninstall([string]$name, [string]$options, [string]$inputLines, [i
         if (-not $proc.WaitForExit(15000)) { $proc.Kill(); throw "${name}: CLI did not finish" }
         $text = $output.GetAwaiter().GetResult() + $errorOutput.GetAwaiter().GetResult()
         Assert-True ($proc.ExitCode -eq $exitCode) "$name returned $($proc.ExitCode), expected $exitCode`n$text"
+        if ($name -like 'update-*' -and $exitCode -eq 0) {
+            Assert-True ($text -match 'fixture-update:False') "$name did not request an update"
+        }
+        if ($name -like 'check-*') {
+            Assert-True ($text -match 'fixture-update:True') "$name did not request a check"
+        }
+        if ($exitCode -ne 0) {
+            Assert-True ($text -notmatch 'fixture-update:') "$name executed an invalid update request"
+        }
         $dlls = @(Get-ChildItem -Path (Join-Path $game 'BepInEx\plugins') -Filter '*.dll' -ErrorAction SilentlyContinue)
         $cfgs = @(Get-ChildItem -Path (Join-Path $game 'BepInEx\plugins') -Filter '*.yml' -ErrorAction SilentlyContinue)
         Assert-True ($dlls.Count -eq $remaining -and $cfgs.Count -eq $remaining) "$name removed an unexpected set of mods`n$text"
@@ -97,6 +110,14 @@ try {
     Test-Uninstall 'cancel-menu' '-u' "0`n`n" 5 -menu $true
     Test-Uninstall 'eof-menu' '-u' '' 5 -exitCode 1 -menu $true
     Test-Uninstall 'redirected-menu' '-u' '' 5
+    Test-Uninstall 'check-explicit' '-CheckUpdate' '' 5
+    Test-Uninstall 'check-menu' '' "c`n`n" 5 -menu $true
+    Test-Uninstall 'update-explicit' '-Update' '' 5
+    Test-Uninstall 'update-menu' '' "u`n`n" 5 -menu $true
+    Test-Uninstall 'update-uninstall-conflict' '-Update -u' '' 5 -exitCode 1
+    Test-Uninstall 'update-check-conflict' '-Update -CheckUpdate' '' 5 -exitCode 1
+    Test-Uninstall 'update-mods-conflict' '-Update -Mods 1' '' 5 -exitCode 1
+    Test-Uninstall 'update-framework-conflict' '-Update -RemoveBepInEx' '' 5 -exitCode 1
     Write-Host "Installer CLI tests passed ($script:passed assertions)." -ForegroundColor Green
 }
 finally {
