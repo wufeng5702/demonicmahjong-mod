@@ -1,7 +1,7 @@
 # DemonicMahjong Mods — 我在地府打麻将 模组合集
 
-为《我在地府打麻将》编写的 **BepInEx 6 (IL2CPP)** 模组库。不修改游戏本体、不注入逻辑、不参与计算，
-所有数据直接读取游戏自身显示结果，但**不保证**与游戏结算一致。
+为《我在地府打麻将》编写的 **BepInEx 6 (IL2CPP)** 模组库，包含信息提示、操作辅助和封禁额度调整。
+分数预览读取游戏自身结果，但**不保证**与游戏结算一致。
 
 ## 包含的 Mod
 
@@ -11,12 +11,14 @@
 | **AutoContinue** | 自动跳过「等玩家点一下」的环节        | 自动点公告【继续】进入大厅、自动点 Boss 战【点击继续】进入对局 |
 | **SLMenuTrigger** | 牌堆耗尽且对局分数低于 Boss 时自动暂停游戏 | 给予玩家手动执行 SL 的时间；默认开启，可通过 `SLMenuTrigger.yml` 关闭 |
 | **LingPreview** | 幻灵台附牌灵时提示**变换效果**      | 象/鼠/马灵逐牌对照（`东风 → 西风`）；只在幻灵台出现 |
+| **BanLingYongLimit** | 提高封禁灵俑额度 | 已解锁的四种禁咒各额外增加 **10**，通过 `count` 配置 |
 
 各自的详细文档见：
 - [ScorePreview/README.md](ScorePreview/README.md)
 - [AutoContinue/README.md](AutoContinue/README.md)
 - [SLMenuTrigger/README.md](SLMenuTrigger/README.md)
 - [LingPreview/README.md](LingPreview/README.md)
+- [BanLingYongLimit/README.md](BanLingYongLimit/README.md)
 
 ## 快速开始（一键安装 / 卸载）
 1. **下载**  
@@ -59,7 +61,7 @@ powershell -File install_mods.ps1 -Mods 1,2 -Compiler csc          :: 强制用�
 powershell -File install_mods.ps1 -Mods 1,2 -Compiler sdk          :: 强制用本机 .NET SDK
 ```
 
-在 PowerShell 中也可直接调用脚本：`.\install_mods.ps1 -u -Mods 1,2,3,4`。
+在 PowerShell 中也可直接调用脚本：`.\install_mods.ps1 -u -Mods 1,2,3,4,5`。
 `-Mods` 支持逗号、空格、顿号、分号分隔或 PowerShell 数组；菜单中的无效编号会提示重新输入，
 `0` 或空回车取消。若不需要菜单，明确传入 `-Mods` 即可；`-RemoveBepInEx` 仍需确认后才删除框架。
 
@@ -127,6 +129,7 @@ mod/
   SLMenuTrigger/                       自动暂停 mod（源码 + 各自 README）
   AutoContinue/                        自动跳过 mod（源码 + 各自 README）
   LingPreview/                         幻灵台牌灵提示 mod（源码 + README + 薄包装）
+  BanLingYongLimit/                     封禁灵俑额度 mod（默认每种稀有度额外增加 10）
   tools/modbat/                        各 mod build.bat/install.bat 共用的驱动（不放根目录，免得当成入口）
   tools/tests/                         安装器回归测试（模拟进程，不启动游戏）
   tools/dumptypes/                     反编译类型转储工具（开发用）
@@ -164,7 +167,7 @@ UI 结构调整导致读取不到数字时，看 `BepInEx\LogOutput.log`，各 m
 不修改游戏本体、DLC 或存档。详情见 [Compatibility/README.md](Compatibility/README.md)。
 
 `Custom/Dlcs`、`Custom/Mods` 是游戏 SDK 的内容目录，**不是 BepInEx 插件目录**。
-本仓库四个 mod 仍须安装到 `BepInEx/plugins`，不能直接把 DLL 放进 `Custom/Mods`。
+本仓库的 mod 仍须安装到 `BepInEx/plugins`，不能直接把 DLL 放进 `Custom/Mods`。
 脱离 BepInEx 需要按游戏原生 SDK 的入口和包格式另行适配；仅有这些目录不能保证兼容现有插件。
 只卸载 mod 时保留启动补丁，直到一并卸载 BepInEx，避免框架自身再次触发上述崩溃。
 

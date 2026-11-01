@@ -1,4 +1,5 @@
 .env
+docs/ban-ling-yong-investigation.md
 **/bin/
 **/obj/
 tools/dumptypes/libs/

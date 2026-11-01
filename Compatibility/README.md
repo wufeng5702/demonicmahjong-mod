@@ -1,6 +1,6 @@
 # DemonicMahjong Compatibility — 启动兼容补丁
 
-这是四个 mod 共用的框架兼容补丁，不是可选的第五个 mod。
+这是本仓库各 mod 共用的框架兼容补丁，由安装器自动安装。
 安装器会先编译它，再复制到 `BepInEx/patchers/DemonicMahjong.Compatibility.dll`；
 手动 `build.bat` / `install.bat` 也会构建、安装它。
 
