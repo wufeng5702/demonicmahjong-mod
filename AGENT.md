@@ -5,7 +5,7 @@
 
 ## 现状
 
-四个 Mod 均已完成并稳定运行：
+现有四个 Mod 稳定运行；新增 BanLingYongLimit 调整封禁额度：
 
 | Mod | 功能 | 关键文件 |
 |-----|------|----------|
@@ -13,16 +13,17 @@
 | **SLMenuTrigger** | 牌堆耗尽且分数低于 Boss 时自动暂停游戏，给玩家手动 SL 时间 | `SLMenuTrigger.cs` / `Plugin.cs` |
 | **AutoContinue** | 自动跳过公告【继续】与对局【点击继续】 | `AutoSkip.cs` |
 | **LingPreview** | 幻灵台附牌灵时提示变换效果（象/鼠/马灵逐牌对照） | `LingPanel.cs` / `LingTai.cs` |
+| **BanLingYongLimit** | 已解锁禁咒的四种稀有度封禁额度各额外增加 10（配置 count） | `Plugin.cs` / `QuotaPatch.cs` |
 
 启动兼容补丁在 `Compatibility/`，安装到 `BepInEx/patchers/DemonicMahjong.Compatibility.dll`；
-不是第五个可选 Mod。它只引用框架，所以可以在 interop 生成前编译。
+由安装器自动安装。它只引用框架，所以可以在 interop 生成前编译。
 
 共享工具库在 `Shared/`（`StringTruncator` / `NumberParser` / `TransformPath` / `YamlConfig` /
 `FanTextParser` / `ScoreFormula` / `UiText` / `LingRules` / `GitVersion`），各 `.csproj` 通过
 `<Compile Include="..\Shared\*.cs" />` 引入，其中只有 `TransformPath` 依赖 UnityEngine。
 纯函数另有 `Shared.Tests/`（xunit，net8.0，不依赖 interop），见下「验证口径」。
 
-**版本号唯一事实源是 `Shared/GitVersion.cs`**：四个 Mod 和 Compatibility 的 `<Version>` 必须与它一致，
+**版本号唯一事实源是 `Shared/GitVersion.cs`**：各 Mod 和 Compatibility 的 `<Version>` 必须与它一致，
 release.yml 发版时把 tag 写进两者（tag 格式 `vX.Y.Z`），本地改版本用 `set-version.ps1`（不入库）。
 
 个人路径全部走 `.env`（仓库根 `mod/.env`，已 gitignore）：`DEMONIC_MAHJONG_DIR`。
@@ -42,6 +43,8 @@ mod/
   SLMenuTrigger/           自动暂停 mod（csproj/SLMenuTrigger/Plugin/README）
   AutoContinue/            自动跳过 mod（csproj/AutoSkip/README）
   LingPreview/             幻灵台牌灵提示 mod（csproj/LingPanel/LingTai/README）
+  BanLingYongLimit/         封禁额度 mod（TalentInt Postfix；保留原额度为 0 的未解锁天赋）
+  assets/images/           文档图片统一目录；文件名为图片内容的 SHA-256 + 原格式扩展名
   install_mods.ps1         一键安装/卸载脚本（仓库根只留这一组入口）
   tools/modbat/            四个 mod 的 build.bat/install.bat 共用驱动；不放根目录，免得被当成入口
                            （包装里只传 mod 名；注意别用 shift —— shift 会连 %0 一起移，%~dp0 就错了）
@@ -108,7 +111,7 @@ grep -aE "ScorePreview|SLMenuTrigger|AutoContinue|LingPreview|ting hook|Error" "
 确认 `BepInEx\` + `BepInEx\core\BepInEx.Core.dll` 存在才允许动目标目录——否则坏包会把已有
 安装改坏。GitHub 镜像代理（如 gh.ddlc.top）只反代 github.com，对 `builds.bepinex.dev` /
 `api.nuget.org` 无意义，不要依赖。首次装 BepInEx 后 interop/ 未生成，mod 编译必失败 →
-`install_mods.ps1` 会先安装 Compatibility，再**始终检查/刷新** interop：暂时将四个旧插件改成
+`install_mods.ps1` 会先安装 Compatibility，再**始终检查/刷新** interop：暂时将目录清单中的旧插件改成
 非 DLL 后缀，使用 `-batchmode -nographics` 和游戏根工作目录启动，完整加载后只关闭检查进程；
 要求 `Chainloader startup complete`、关键程序集和 assembly-hash.txt 完整（已自然退出还要求退出码 0），
 且没有生成失败/过期日志。不能仅看目录或 `Chainloader initialized`。检查后原样恢复旧插件，
@@ -175,6 +178,12 @@ grep -aE "ScorePreview|SLMenuTrigger|AutoContinue|LingPreview|ting hook|Error" "
 - 游戏自己的牌灵详情文本位：`MaJiang.UI.PaiMianDetailContainer._paiLingText` / `_paiLingDetailText`。
 
 ## 关键架构事实（实测）
+
+- **封禁额度**：`TalentManager.TalentInt(TalentType)`，400–403 对应普通/稀有/史诗/传说。
+  `BanLingYongLimit` 仅对原结果 > 0 的四种禁咒返回原结果 + max(0, count)（默认额外 10）；内部字段为 ExtraCount。
+  收藏和战前设置共用此入口。
+  `BanLingYong` 保存方案，`SelectBanSchemeList` 才是本局列表；战前索引 0 为推荐方案，正数取方案键 index-1。
+  天赋详情的 `CurDescription` 直接读取参数表，仍显示原版额度。
 
 - 游戏主体代码在 **MaJiang.dll**（interop 于 `BepInEx\interop\`，BepInEx 首次启动自动生成）；
   不是 Assembly-CSharp.dll。

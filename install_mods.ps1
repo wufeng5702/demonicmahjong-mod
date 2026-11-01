@@ -59,7 +59,7 @@ function Read-Input([string]$prompt) {
     if ($Host.Name -eq 'ConsoleHost') {
         Write-Host "$($prompt): " -NoNewline
         $line = [Console]::ReadLine()
-        if ($null -eq $line) { throw "控制台输入已结束。可用 -Mods 1,2,3,4 明确指定编号，或直接运行 .\install_mods.ps1。" }
+        if ($null -eq $line) { throw "控制台输入已结束。可用 -Mods 1,2,3,4,5 明确指定编号，或直接运行 .\install_mods.ps1。" }
         return $line
     }
     return (Read-Host $prompt)
@@ -77,7 +77,8 @@ $catalog = @(
     [pscustomobject]@{ Id = 1; Project = "ScorePreview"; Dll = "ScorePreview.dll"; Cfg = "ScorePreview.yml"; Desc = "分数预览（计分/和牌两行 HUD）" },
     [pscustomobject]@{ Id = 2; Project = "AutoContinue"; Dll = "AutoContinue.dll"; Cfg = "AutoContinue.yml"; Desc = "自动跳过公告【继续】与对局【点击继续】" },
     [pscustomobject]@{ Id = 3; Project = "SLMenuTrigger"; Dll = "SLMenuTrigger.dll"; Cfg = "SLMenuTrigger.yml"; Desc = "低于 Boss 时自动暂停游戏让玩家手动 SL" },
-    [pscustomobject]@{ Id = 4; Project = "LingPreview"; Dll = "LingPreview.dll"; Cfg = "LingPreview.yml"; Desc = "幻灵台附牌灵时提示变换效果（象/鼠/马灵逐牌对照）" }
+    [pscustomobject]@{ Id = 4; Project = "LingPreview"; Dll = "LingPreview.dll"; Cfg = "LingPreview.yml"; Desc = "幻灵台附牌灵时提示变换效果（象/鼠/马灵逐牌对照）" },
+    [pscustomobject]@{ Id = 5; Project = "BanLingYongLimit"; Dll = "BanLingYongLimit.dll"; Cfg = "BanLingYongLimit.yml"; Desc = "已解锁禁咒的四种稀有度封禁额度各额外增加 10" }
 )
 
 Write-Host "== DemonicMahjong Mod 安装器 ==" -ForegroundColor Cyan
@@ -611,7 +612,7 @@ function Publish-Mod($mod, [string]$game, [switch]$Patcher) {
 }
 
 # 默认配置模板：此处的键/默认值必须与各 mod 源码里 YamlConfig.Load 的 defaults 字典
-# （ScoreHud.LoadConfig / MenuTriggerScript.LoadConfig / AutoSkip.LoadConfig / LingPanel.LoadConfig）
+# （ScoreHud.LoadConfig / MenuTriggerScript.LoadConfig / AutoSkip.LoadConfig / LingPanel.LoadConfig / BanLingYongLimit.Plugin.Load）
 # 保持一致，
 # 改任何一边都要同步另一边（运行时以 mod 内 defaults 为准，本函数只用于首次生成带注释的文件）。
 function Default-Cfg([string]$proj) {
@@ -674,6 +675,14 @@ function Default-Cfg([string]$proj) {
             "`r`n" +
             "# true = 输出诊断日志`r`n" +
             "debug: false`r`n"
+        }
+        "BanLingYongLimit" {
+            return "# BanLingYongLimit — 已解锁禁咒的封禁额度（改后重启游戏生效）`r`n" +
+            "enabled: true`r`n" +
+            "`r`n" +
+            "# 每种稀有度的额外额度；实际额度 = 游戏内置额度 + max(0, count)`r`n" +
+            "# count 为 0 时使用内置额度；未解锁的稀有度仍为 0`r`n" +
+            "count: 10`r`n"
         }
         default { return $null }
     }

@@ -123,6 +123,9 @@ try {
     Assert-True ((Get-Content -LiteralPath $plugin -Raw) -eq 'old plugin') 'Running-game check moved the plugin'
     Assert-True ((Get-Content -LiteralPath (Join-Path $game 'Custom\Dlcs\keep.txt') -Raw) -eq 'DLC content') 'Custom DLC changed'
     Assert-True ((Get-Content -LiteralPath (Join-Path $game 'Custom\Mods\keep.txt') -Raw) -eq 'official mod content') 'Custom mods changed'
+    $newConfig = Default-Cfg 'BanLingYongLimit'
+    Assert-True ($newConfig -match '(?m)^enabled: true\r?$') 'Ban quota mod is not enabled by default'
+    Assert-True ($newConfig -match '(?m)^count: 10\r?$') 'Ban quota mod default is not 10'
     $catalog = @(1..4 | ForEach-Object { [pscustomobject]@{ Id = $_; Project = "Mod$_" } })
     foreach ($inputText in @('1,2,3,4', '1 2 3 4', '1，2，3，4', '1、2、3、4', '1;2;3;4', '1；2；3；4')) {
         Assert-True ((@(Parse-Mods $inputText).Id -join ',') -eq '1,2,3,4') "Multi-mod separator rejected: $inputText"
