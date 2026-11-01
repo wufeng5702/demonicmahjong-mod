@@ -55,3 +55,7 @@ jobs:
             - name: Test installer CLI and interactive input
               shell: powershell
               run: .\tools\tests\installer-cli.Tests.ps1
+
+            - name: Test updater without network or game
+              shell: powershell
+              run: .\tools\tests\updater.Tests.ps1

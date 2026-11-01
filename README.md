@@ -159,6 +159,30 @@ BepInEx 启动时检查 `interop\` 是否过期，仅在需要时重新生成（
 UI 结构调整导致读取不到数字时，看 `BepInEx\LogOutput.log`，各 mod README 的「日志输出」一节列了关键行
 （`Diag: uiFanMin=` / `hud ->` / `SLMenuTrigger cfg:` / `AutoContinue cfg:`）。
 
+### 检查和更新 Mod
+
+运行 `install_mods.bat`，在安装菜单输入 **C** 检查更新，或输入 **U** 更新已安装 Mod。
+也可以直接运行：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File install_mods.ps1 -CheckUpdate
+powershell -NoProfile -ExecutionPolicy Bypass -File install_mods.ps1 -Update
+```
+
+- `-CheckUpdate` 显示当前项目、最新稳定 Release 和已安装 Mod 的版本；可以在游戏运行时检查。
+- `-Update` 识别 `BepInEx/plugins` 中本仓库的 Mod，只更新低于最新发布版本或版本无法读取的已安装项。
+  执行前需关闭游戏；下载期间若启动游戏，也会停止安装。
+- 支持 `-GameDir`、`-Compiler auto|sdk|csc` 和 `-SkipBepInEx`；更新模式不能与 `-Mods` 或卸载参数组合。
+- 已有 YAML 配置保留，新增配置键由插件默认值补充。最新 Release 早于当前项目时会跳过，已安装的更高版本也不会降级。
+
+下载依次尝试 **GitHub → gh.monlor.com → git.yylx.win → github.geekery.cn**。
+每个代理使用“代理前缀 + 完整 GitHub 下载链接”；请求失败、校验失败或压缩包结构无效时自动换源。
+下载包与 `.sha256` 校验文件必须匹配。GitHub API 无法访问时，会通过同样的下载源获取 `latest` 发布包并读取其版本。
+
+更新器从临时目录调用**新版安装器**，结束后清理下载文件；会保留当前 Git/解压项目目录及 `.env`。
+需要更新项目源码时，下载新版 Release，或在干净的 Git 工作区切换到 `main` 后执行 `git pull --ff-only`。
+更新渠道使用 GitHub **Release**；仅合并代码不会发布新版本，需推送 `vX.Y.Z` 标签触发打包。
+
 ### 月圆奇谭更新 / `Custom` 目录
 
 此版本引入 HybridCLR 热更新运行时。单独安装 BepInEx `be.791` 仍可能在没有任何插件时崩溃：
