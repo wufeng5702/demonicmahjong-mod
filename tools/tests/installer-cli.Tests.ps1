@@ -80,7 +80,10 @@ function Test-Uninstall([string]$name, [string]$options, [string]$inputLines, [i
     }
 }
 
+$originalInputEncoding = [Console]::InputEncoding
 try {
+    # Process.StandardInput inherits the parent's encoding; a UTF-8 BOM would prefix the first menu choice.
+    [Console]::InputEncoding = [Text.UTF8Encoding]::new($false)
     Test-Uninstall 'u-menu' '-u' "1,2,3,4,5`n`n" 0 -menu $true
     Test-Uninstall 'long-menu' '-Uninstall' "1;2;3;4;5`n`n" 0 -menu $true
     Test-Uninstall 'unicode-menu' '-u' ((1..5 -join [char]0x3001) + "`n`n") 0 -menu $true
@@ -97,5 +100,6 @@ try {
     Write-Host "Installer CLI tests passed ($script:passed assertions)." -ForegroundColor Green
 }
 finally {
+    [Console]::InputEncoding = $originalInputEncoding
     Remove-Item -LiteralPath $root -Recurse -Force
 }
