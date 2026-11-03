@@ -18,6 +18,11 @@
 启动兼容补丁在 `Compatibility/`，安装到 `BepInEx/patchers/DemonicMahjong.Compatibility.dll`；
 由安装器自动安装。它只引用框架，所以可以在 interop 生成前编译。
 
+`DlcBugFix/` 是 DLC 交互实验插件，基于远程 `397c871` 及现有 `Compatibility`：
+歌声后补齐麒麟进度；殉道之剑在每次复活完成后继续扣剩余伤害。用户明确要求保留伤害，不能仅把负命抹为 0。
+纯调度测试在 `DlcBugFix.Tests/`，游戏内组件／协程集成工具在 `tools/DlcBugProbe/`（工具版本 `0.1.0`）；
+完整存档验收及实际覆盖范围见 `DlcBugFix/INVESTIGATION.md`。当前使用该插件自己的 build/install 脚本。
+
 共享工具库在 `Shared/`（`StringTruncator` / `NumberParser` / `TransformPath` / `YamlConfig` /
 `FanTextParser` / `ScoreFormula` / `UiText` / `LingRules` / `GitVersion`），各 `.csproj` 通过
 `<Compile Include="..\Shared\*.cs" />` 引入，其中只有 `TransformPath` 依赖 UnityEngine。
@@ -268,6 +273,11 @@ grep -aE "ScorePreview|SLMenuTrigger|AutoContinue|LingPreview|ting hook|Error" "
 19. **托管辅助方法不应导出到 IL2CPP**：MonoBehaviour 上使用 CLR List/数组/自定义 enum 的方法
     应加 `[HideFromIl2Cpp]`，否则注册时出现 unsupported parameter / Assembly LingPreview.dll
     is not registered。Unity 的 Awake/Update/OnGUI 等生命周期方法不能隐藏。
+20. **复活是异步队列**：`NeedTryRevive` 的 Prefix/Postfix 围绕协程创建，不代表复活完成；
+    连续扣命需等原版协程和 `PopUIManager.AddCallBack` 的队列完成屏障，再处理剩余伤害。
+    调度期间抑制同一地图管理器的 `OnHpChange` 自动复活，终态才通知原调用者。
+21. **HarmonyX 与原生异常**：后续 Prefix 在前一个返回 false 后仍可运行，必要时检查 `__runOriginal`；
+    native→managed trampoline 可记录并捕获异常，外层方法仍会返回。验收须检查状态、错误日志及完成回调。
 
 ## 工具 / 常用命令
 

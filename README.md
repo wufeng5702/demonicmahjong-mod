@@ -20,6 +20,12 @@
 - [LingPreview/README.md](LingPreview/README.md)
 - [BanLingYongLimit/README.md](BanLingYongLimit/README.md)
 
+### DLC 实验修复
+
+[DlcBugFix](DlcBugFix/README.md) 保留歌声对麒麟的成长效果，修复成长后的进度缺键；
+殉道之剑采用逐点扣命、归零复活后继续扣剩余伤害的结算。实验项目按其文档手动安装，
+使用共用的 `Compatibility` 启动补丁。验证进展见 [调查记录](DlcBugFix/INVESTIGATION.md)。
+
 ## 快速开始（一键安装 / 卸载）
 1. **下载**  
    下载最新版代码： [**`DemonicMahjongMod.zip`**](https://github.com/wufeng5702/demonicmahjong-mod/releases/latest/download/DemonicMahjongMod.zip)。
