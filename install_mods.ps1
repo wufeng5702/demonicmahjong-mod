@@ -958,6 +958,33 @@ function Invoke-AutoGenerateInterop([string]$game) {
     return $success
 }
 
+# 官方游戏更新已修复 DLC 交互问题，DlcBugFix 实验 mod 已从项目中移除；
+# 安装/卸载时顺带从游戏目录删除它（含配置），避免旧 dll 继续加载报错。
+function Remove-ObsoleteMods([string]$game) {
+    $obsolete = @(
+        [pscustomobject]@{ Dll = "DlcBugFix.dll"; Cfg = "DlcBugFix.yml" }
+    )
+    $plugins = Join-Path $game "BepInEx\plugins"
+    foreach ($mod in $obsolete) {
+        foreach ($f in @($mod.Dll, $mod.Cfg)) {
+            $p = Join-Path $plugins $f
+            if (-not (Test-Path -LiteralPath $p -PathType Leaf)) { continue }
+            try {
+                Remove-Item -LiteralPath $p -Force -ErrorAction Stop
+                Write-Host "[清理] 已移除官方修复后不再需要的 $p" -ForegroundColor Yellow
+            }
+            catch {
+                Write-Host "[清理] 无法删除 $p：$($_.Exception.Message)（请关闭游戏后手动删除）" -ForegroundColor Red
+            }
+        }
+    }
+    # 开发探针依赖已移除的 DlcBugFix，一并提示（不自动删，它是人工拷贝的开发工具）
+    $probe = Join-Path $plugins "DlcBugProbe.dll"
+    if (Test-Path -LiteralPath $probe -PathType Leaf) {
+        Write-Host "[清理] 发现 DlcBugProbe.dll（DLC 修复探针），它已随 DlcBugFix 一起失效，建议手动删除 $probe" -ForegroundColor Yellow
+    }
+}
+
 function Uninstall-Mod($mod, [string]$game) {
     $plugins = Join-Path $game "BepInEx\plugins"
     foreach ($f in @($mod.Dll, $mod.Cfg)) {
@@ -986,6 +1013,8 @@ if ($Uninstall) {
     $game = Resolve-GameDir
     if (-not $game) { Write-Host "未确定游戏目录，退出。" -ForegroundColor Red; Pause-Exit 1 }
     foreach ($m in $sel) { Uninstall-Mod $m $game }
+    # 官方已修复 DLC 交互问题：卸载时同样顺带清理已下架的 DlcBugFix
+    Remove-ObsoleteMods $game
     if ($RemoveBepInEx) {
         $confirm = Read-Input "确认删除整个 BepInEx 框架与前置(winhttp/doorstop/dotnet)? [y/N]"
         if ([string]$confirm -match '^y') {
@@ -1024,6 +1053,9 @@ if (Get-Process -Name "Demonic Mahjong" -ErrorAction SilentlyContinue) {
     Write-Host "游戏正在运行，请先关闭游戏再安装。" -ForegroundColor Red
     Pause-Exit 1
 }
+
+# 官方已修复 DLC 交互问题：顺带清理已下架的 DlcBugFix
+Remove-ObsoleteMods $game
 
 if (-not $SkipBepInEx) {
     if (-not (Install-BepInEx $game)) {

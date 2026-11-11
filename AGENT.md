@@ -18,10 +18,9 @@
 启动兼容补丁在 `Compatibility/`，安装到 `BepInEx/patchers/DemonicMahjong.Compatibility.dll`；
 由安装器自动安装。它只引用框架，所以可以在 interop 生成前编译。
 
-`DlcBugFix/` 是 DLC 交互实验插件，基于远程 `397c871` 及现有 `Compatibility`：
-歌声后补齐麒麟进度；殉道之剑在每次复活完成后继续扣剩余伤害。用户明确要求保留伤害，不能仅把负命抹为 0。
-纯调度测试在 `DlcBugFix.Tests/`，游戏内组件／协程集成工具在 `tools/DlcBugProbe/`（工具版本 `0.1.0`）；
-完整存档验收及实际覆盖范围见 `DlcBugFix/INVESTIGATION.md`。当前使用该插件自己的 build/install 脚本。
+`DlcBugFix/` 已移除：官方游戏更新已修复该 DLC 交互问题（歌声麒麟进度 / 殉道之剑复活扣血），
+不再需要对应修复。`install_mods.ps1` 会在安装/卸载时顺带从游戏目录删除 `DlcBugFix.dll` 与
+`DlcBugFix.yml`（`Remove-ObsoleteMods`）；`DlcBugProbe` 探针随项目一起删除，发现该 dll 时只会提示手动删除。
 
 共享工具库在 `Shared/`（`StringTruncator` / `NumberParser` / `TransformPath` / `YamlConfig` /
 `FanTextParser` / `ScoreFormula` / `UiText` / `LingRules` / `GitVersion`），各 `.csproj` 通过
