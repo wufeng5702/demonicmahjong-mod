@@ -28,14 +28,13 @@ jobs:
             - name: Run unit tests
               run: |
                   dotnet test Shared.Tests/Shared.Tests.csproj -c Release --nologo
-                  dotnet test DlcBugFix.Tests/DlcBugFix.Tests.csproj -c Release --nologo
 
             - name: Check version consistency
               # 唯一事实源 Shared/GitVersion.cs，插件与启动补丁的 <Version> 必须一致（AGENT.md）
               run: |
                   ver=$(sed -n 's/.*Version = "\([^"]*\)".*/\1/p' Shared/GitVersion.cs)
                   echo "GitVersion.cs: $ver"
-                  for csproj in ScorePreview/ScorePreview.csproj SLMenuTrigger/SLMenuTrigger.csproj AutoContinue/AutoContinue.csproj LingPreview/LingPreview.csproj BanLingYongLimit/BanLingYongLimit.csproj Compatibility/Compatibility.csproj DlcBugFix/DlcBugFix.csproj; do
+                  for csproj in ScorePreview/ScorePreview.csproj SLMenuTrigger/SLMenuTrigger.csproj AutoContinue/AutoContinue.csproj LingPreview/LingPreview.csproj BanLingYongLimit/BanLingYongLimit.csproj Compatibility/Compatibility.csproj; do
                     csv=$(sed -n 's/.*<Version>\([^<]*\)<\/Version>.*/\1/p' "$csproj")
                     if [ "$csv" != "$ver" ]; then
                       echo "::error::$csproj <Version>=$csv, expected $ver (run set-version.ps1)"

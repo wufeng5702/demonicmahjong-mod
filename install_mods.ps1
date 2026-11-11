@@ -82,7 +82,7 @@ function Pause-Exit([int]$code = 0) {
 # 仓库存档：id / 项目目录 / dll 名 / 说明
 $catalog = @(
     [pscustomobject]@{ Id = 1; Project = "ScorePreview"; Dll = "ScorePreview.dll"; Cfg = "ScorePreview.yml"; Desc = "分数预览（计分/和牌两行 HUD）" },
-    [pscustomobject]@{ Id = 2; Project = "AutoContinue"; Dll = "AutoContinue.dll"; Cfg = "AutoContinue.yml"; Desc = "自动跳过公告【继续】与对局【点击继续】" },
+    [pscustomobject]@{ Id = 2; Project = "AutoContinue"; Dll = "AutoContinue.dll"; Cfg = "AutoContinue.yml"; Desc = "自动跳过公告【继续】与对局【点击继续】与随机模式角色轮播" },
     [pscustomobject]@{ Id = 3; Project = "SLMenuTrigger"; Dll = "SLMenuTrigger.dll"; Cfg = "SLMenuTrigger.yml"; Desc = "低于 Boss 时自动暂停游戏让玩家手动 SL" },
     [pscustomobject]@{ Id = 4; Project = "LingPreview"; Dll = "LingPreview.dll"; Cfg = "LingPreview.yml"; Desc = "幻灵台附牌灵时提示变换效果（象/鼠/马灵逐牌对照）" },
     [pscustomobject]@{ Id = 5; Project = "BanLingYongLimit"; Dll = "BanLingYongLimit.dll"; Cfg = "BanLingYongLimit.yml"; Desc = "已解锁禁咒的四种稀有度封禁额度各额外增加 10" }
@@ -800,7 +800,11 @@ function Default-Cfg([string]$proj) {
             "`r`n" +
             "# 3. 对局结算后的结算/查看详情界面：自动点击【继续】（默认关闭）`r`n" +
             "result_enabled: false`r`n" +
-            "result_delay: 5.0`r`n"
+            "result_delay: 5.0`r`n" +
+            "`r`n" +
+            "# 4. 随机模式开始时跳过角色轮播动画（默认关闭；开启后直接落到随机角色上）`r`n" +
+            "random_scroll_enabled: false`r`n" +
+            "random_scroll_time: 0.05`r`n"
         }
         "ScorePreview" { 
             return "# ScorePreview — 分数预览`r`n" +
@@ -958,6 +962,33 @@ function Invoke-AutoGenerateInterop([string]$game) {
     return $success
 }
 
+# 官方游戏更新已修复 DLC 交互问题，DlcBugFix 实验 mod 已从项目中移除；
+# 安装/卸载时顺带从游戏目录删除它（含配置），避免旧 dll 继续加载报错。
+function Remove-ObsoleteMods([string]$game) {
+    $obsolete = @(
+        [pscustomobject]@{ Dll = "DlcBugFix.dll"; Cfg = "DlcBugFix.yml" }
+    )
+    $plugins = Join-Path $game "BepInEx\plugins"
+    foreach ($mod in $obsolete) {
+        foreach ($f in @($mod.Dll, $mod.Cfg)) {
+            $p = Join-Path $plugins $f
+            if (-not (Test-Path -LiteralPath $p -PathType Leaf)) { continue }
+            try {
+                Remove-Item -LiteralPath $p -Force -ErrorAction Stop
+                Write-Host "[清理] 已移除官方修复后不再需要的 $p" -ForegroundColor Yellow
+            }
+            catch {
+                Write-Host "[清理] 无法删除 $p：$($_.Exception.Message)（请关闭游戏后手动删除）" -ForegroundColor Red
+            }
+        }
+    }
+    # 开发探针依赖已移除的 DlcBugFix，一并提示（不自动删，它是人工拷贝的开发工具）
+    $probe = Join-Path $plugins "DlcBugProbe.dll"
+    if (Test-Path -LiteralPath $probe -PathType Leaf) {
+        Write-Host "[清理] 发现 DlcBugProbe.dll（DLC 修复探针），它已随 DlcBugFix 一起失效，建议手动删除 $probe" -ForegroundColor Yellow
+    }
+}
+
 function Uninstall-Mod($mod, [string]$game) {
     $plugins = Join-Path $game "BepInEx\plugins"
     foreach ($f in @($mod.Dll, $mod.Cfg)) {
@@ -986,6 +1017,8 @@ if ($Uninstall) {
     $game = Resolve-GameDir
     if (-not $game) { Write-Host "未确定游戏目录，退出。" -ForegroundColor Red; Pause-Exit 1 }
     foreach ($m in $sel) { Uninstall-Mod $m $game }
+    # 官方已修复 DLC 交互问题：卸载时同样顺带清理已下架的 DlcBugFix
+    Remove-ObsoleteMods $game
     if ($RemoveBepInEx) {
         $confirm = Read-Input "确认删除整个 BepInEx 框架与前置(winhttp/doorstop/dotnet)? [y/N]"
         if ([string]$confirm -match '^y') {
@@ -1024,6 +1057,9 @@ if (Get-Process -Name "Demonic Mahjong" -ErrorAction SilentlyContinue) {
     Write-Host "游戏正在运行，请先关闭游戏再安装。" -ForegroundColor Red
     Pause-Exit 1
 }
+
+# 官方已修复 DLC 交互问题：顺带清理已下架的 DlcBugFix
+Remove-ObsoleteMods $game
 
 if (-not $SkipBepInEx) {
     if (-not (Install-BepInEx $game)) {

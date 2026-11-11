@@ -123,6 +123,15 @@ try {
     Assert-True ((Get-Content -LiteralPath $plugin -Raw) -eq 'old plugin') 'Running-game check moved the plugin'
     Assert-True ((Get-Content -LiteralPath (Join-Path $game 'Custom\Dlcs\keep.txt') -Raw) -eq 'DLC content') 'Custom DLC changed'
     Assert-True ((Get-Content -LiteralPath (Join-Path $game 'Custom\Mods\keep.txt') -Raw) -eq 'official mod content') 'Custom mods changed'
+    # 官方修复后下架 DlcBugFix：安装/卸载时应删除其 dll 与 yml，保留探针（仅提示）与其他插件
+    [IO.File]::WriteAllText((Join-Path $game 'BepInEx\plugins\DlcBugFix.dll'), 'stale fix')
+    [IO.File]::WriteAllText((Join-Path $game 'BepInEx\plugins\DlcBugFix.yml'), 'debug: true')
+    [IO.File]::WriteAllText((Join-Path $game 'BepInEx\plugins\DlcBugProbe.dll'), 'dev probe')
+    Remove-ObsoleteMods $game
+    Assert-True (-not (Test-Path -LiteralPath (Join-Path $game 'BepInEx\plugins\DlcBugFix.dll'))) 'DlcBugFix.dll was not removed'
+    Assert-True (-not (Test-Path -LiteralPath (Join-Path $game 'BepInEx\plugins\DlcBugFix.yml'))) 'DlcBugFix.yml was not removed'
+    Assert-True (Test-Path -LiteralPath (Join-Path $game 'BepInEx\plugins\DlcBugProbe.dll')) 'Dev probe was deleted unexpectedly'
+    Assert-True ((Get-Content -LiteralPath $plugin -Raw) -eq 'old plugin') 'Catalog plugins were touched by cleanup'
     $newConfig = Default-Cfg 'BanLingYongLimit'
     Assert-True ($newConfig -match '(?m)^enabled: true\r?$') 'Ban quota mod is not enabled by default'
     Assert-True ($newConfig -match '(?m)^count: 10\r?$') 'Ban quota mod default is not 10'

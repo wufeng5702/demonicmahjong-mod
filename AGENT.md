@@ -11,17 +11,16 @@
 |-----|------|----------|
 | **ScorePreview** | 左上角 IMGUI 四行 HUD：`计分:` 镜像结算 / `和牌1/2/3:` 听牌预测 | `ScoreHud.cs` / `Prediction.cs` |
 | **SLMenuTrigger** | 牌堆耗尽且分数低于 Boss 时自动暂停游戏，给玩家手动 SL 时间 | `SLMenuTrigger.cs` / `Plugin.cs` |
-| **AutoContinue** | 自动跳过公告【继续】与对局【点击继续】 | `AutoSkip.cs` |
+| **AutoContinue** | 自动跳过公告【继续】、对局【点击继续】与随机模式角色轮播（`random_scroll_enabled`/`random_scroll_time`） | `AutoSkip.cs` |
 | **LingPreview** | 幻灵台附牌灵时提示变换效果（象/鼠/马灵逐牌对照） | `LingPanel.cs` / `LingTai.cs` |
 | **BanLingYongLimit** | 已解锁禁咒的四种稀有度封禁额度各额外增加 10（配置 count） | `Plugin.cs` / `QuotaPatch.cs` |
 
 启动兼容补丁在 `Compatibility/`，安装到 `BepInEx/patchers/DemonicMahjong.Compatibility.dll`；
 由安装器自动安装。它只引用框架，所以可以在 interop 生成前编译。
 
-`DlcBugFix/` 是 DLC 交互实验插件，基于远程 `397c871` 及现有 `Compatibility`：
-歌声后补齐麒麟进度；殉道之剑在每次复活完成后继续扣剩余伤害。用户明确要求保留伤害，不能仅把负命抹为 0。
-纯调度测试在 `DlcBugFix.Tests/`，游戏内组件／协程集成工具在 `tools/DlcBugProbe/`（工具版本 `0.1.0`）；
-完整存档验收及实际覆盖范围见 `DlcBugFix/INVESTIGATION.md`。当前使用该插件自己的 build/install 脚本。
+`DlcBugFix/` 已移除：官方游戏更新已修复该 DLC 交互问题（歌声麒麟进度 / 殉道之剑复活扣血），
+不再需要对应修复。`install_mods.ps1` 会在安装/卸载时顺带从游戏目录删除 `DlcBugFix.dll` 与
+`DlcBugFix.yml`（`Remove-ObsoleteMods`）；`DlcBugProbe` 探针随项目一起删除，发现该 dll 时只会提示手动删除。
 
 共享工具库在 `Shared/`（`StringTruncator` / `NumberParser` / `TransformPath` / `YamlConfig` /
 `FanTextParser` / `ScoreFormula` / `UiText` / `LingRules` / `GitVersion`），各 `.csproj` 通过
@@ -46,7 +45,7 @@ mod/
   Compatibility/           HybridCLR 启动兼容补丁（Preloader Finalizer，早于插件 Load）
   ScorePreview/            分数预览 mod（csproj/ScoreHud/Prediction/README）
   SLMenuTrigger/           自动暂停 mod（csproj/SLMenuTrigger/Plugin/README）
-  AutoContinue/            自动跳过 mod（csproj/AutoSkip/README）
+  AutoContinue/            自动跳过 mod（公告【继续】/Boss 战【点击继续】/随机模式角色轮播；csproj/AutoSkip/README）
   LingPreview/             幻灵台牌灵提示 mod（csproj/LingPanel/LingTai/README）
   BanLingYongLimit/         封禁额度 mod（TalentInt Postfix；保留原额度为 0 的未解锁天赋）
   assets/images/           文档图片统一目录；文件名为图片内容的 SHA-256 + 原格式扩展名
@@ -105,8 +104,8 @@ grep -aE "ScorePreview|SLMenuTrigger|AutoContinue|LingPreview|ting hook|Error" "
   开 `debug` 后再看 `[diag] Comp.Try …ms` 与 `hud -> 计分: …`。
 - SLMenuTrigger：`[SLMenuTrigger] v<版本> loaded` → `SLMenuTrigger cfg: enabled=True fontsize=24`
   → 牌堆耗尽时 `牌堆耗尽! Player < Boss. Pausing. TimeScale=0`。
-- AutoContinue：`[AutoContinue] v<版本> loaded` → `AutoContinue cfg: announce=True/d=2 …`
-  → 点击时 `AutoContinue: clicked …`。
+- AutoContinue：`[AutoContinue] v<版本> loaded` → `AutoContinue cfg: announce=True/d=2 … random_scroll=False/t=0.05`
+  → 点击时 `AutoContinue: clicked …`；随机模式开始时 `AutoContinue: random scroll accelerated randomScrollTime … -> 0.05`。
 - LingPreview：`[LingPreview] v<版本> loaded` → `LingPanel active xoffset=… fontsize=… detail=…`
   → 进幻灵台选灵后看 `ling -> 象灵 … | ▶ 北风 → 南风`；开 `debug` 再看 `[probe] state …`
   （幻灵台当前状态）与 `[probe] ling=…`（该灵在游戏里的配置）。

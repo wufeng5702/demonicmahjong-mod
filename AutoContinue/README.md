@@ -7,6 +7,7 @@
 - **公告界面**：启动后自动点击【继续】进入大厅。
 - **Boss 战加载**：加载完成后自动点击【点击继续】进入对局。
 - **结算界面**：对局结算后自动点击【继续】（默认关闭）。
+- **随机模式角色轮播**：开始随机模式时把角色轮播总时长压到接近 0，直接落在随机角色上（默认关闭）。
 - **可配延迟**：每个环节独立配置延迟秒数，避免过早点击。
 
 ## 使用说明
@@ -18,6 +19,7 @@
 | 启动公告 | 自动点【继续】，延迟 2 秒 | `announce_enabled` / `announce_delay` |
 | Boss 战加载 | 自动点【点击继续】，延迟 1 秒 | `battle_enabled` / `battle_delay` |
 | 对局结算 | 默认关闭，延迟 5 秒 | `result_enabled` / `result_delay` |
+| 随机模式角色轮播 | 默认关闭，轮播时长压到 0.05 秒 | `random_scroll_enabled` / `random_scroll_time` |
 
 改配置后重启游戏生效。
 
@@ -33,11 +35,15 @@
 
 同一按钮触发一次后 3 秒冷却，避免重复点击。按钮消失后重新 arm。
 
+随机模式角色轮播使用同一轮询节奏：每 0.25 秒查找场景中的 `CharacterSelectorCtrl`（预战面板的角色选择器），
+把它的 `randomScrollTime`（轮播总时长）压到 `random_scroll_time`（默认 0.05 秒）。游戏仍负责
+随机选角并触发后续流程，只是动画近乎瞬时完成。配置值下限为 0.01 秒（避免除零）。
+
 ## 日志输出
 
 ```
-[Info :AutoContinue] [AutoContinue] v0.3.2 loaded
-[Info :AutoContinue] AutoContinue cfg: announce=True/d=2 battle=True/d=1 result=False/d=5
+[Info :AutoContinue] [AutoContinue] v0.6.0 loaded
+[Info :AutoContinue] AutoContinue cfg: announce=True/d=2 battle=True/d=1 result=False/d=5 random_scroll=False/t=0.05
 [Info :AutoContinue] AutoContinue: clicked Battle btn=[xxx] text=[点击继续]
 ```
 
@@ -55,6 +61,10 @@ battle_delay: 1.0
 # 对局结算（默认关闭）
 result_enabled: false
 result_delay: 5.0
+
+# 随机模式角色轮播（默认关闭；开启后压到接近 0 即直接落到随机角色）
+random_scroll_enabled: false
+random_scroll_time: 0.05
 ```
 
 ## 兼容性
