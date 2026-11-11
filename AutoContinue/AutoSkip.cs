@@ -12,7 +12,8 @@ namespace AutoContinue
     /// 自动跳过三个「等玩家点一下」的环节：
     ///   1) 启动后的公告界面 → 自动点【继续】进大厅；
     ///   2) 与 Boss 对决加载完成后底部【点击继续】→ 自动点击进对局；
-    ///   3) 对局结算后的结算/查看详情界面 → 自动点【继续】。
+    ///   3) 对局结算后的结算/查看详情界面 → 自动点【继续】；
+    ///   4) 随机模式开始时的角色轮播动画 → 加速到 random_scroll_time 秒（默认 0.05，近乎瞬时落点；功能默认关闭）。
     /// 由 dll 同目录 AutoContinue.yml 控制开关与延迟（改后重启生效）。
     /// </summary>
     public class AutoSkip : MonoBehaviour
@@ -28,6 +29,9 @@ namespace AutoContinue
         private float _battleDelay = 1f;
         private bool _resultEnabled = false;
         private float _resultDelay = 5f;
+        private bool _randomScrollEnabled = false;
+        private float _randomScrollTime = 0.05f;
+        private float _lastRandomLog;
 
         private float _nextScan;
 
@@ -46,7 +50,10 @@ namespace AutoContinue
         {
             if (Time.unscaledTime < _nextScan) return;
             _nextScan = Time.unscaledTime + ScanInterval;
-            if (!_announceEnabled && !_battleEnabled && !_resultEnabled) return;
+            if (!_announceEnabled && !_battleEnabled && !_resultEnabled && !_randomScrollEnabled) return;
+
+            if (_randomScrollEnabled)
+                TryAccelerateRandomScroll();
 
             // 收集所有可见按钮及其文本
             var buttonList = new List<(Button btn, string text)>();
@@ -188,6 +195,39 @@ namespace AutoContinue
             return false;
         }
 
+        /// <summary>
+        /// 随机模式开始时，把预战面板里角色选择器的轮播总时长压到 random_scroll_time。
+        /// 游戏自身仍负责选中随机角色并触发后续流程，只是动画近乎瞬时完成。
+        /// </summary>
+        [Il2CppInterop.Runtime.Attributes.HideFromIl2Cpp]
+        private void TryAccelerateRandomScroll()
+        {
+            try
+            {
+                var selectors = UnityEngine.Object.FindObjectsOfType<CharacterSelectorCtrl>();
+                foreach (var selector in selectors)
+                {
+                    if (selector == null) continue;
+                    float cur = selector.randomScrollTime;
+                    if (cur <= _randomScrollTime) continue;
+                    selector.randomScrollTime = _randomScrollTime;
+                    if (Time.unscaledTime - _lastRandomLog > 1f)
+                    {
+                        _lastRandomLog = Time.unscaledTime;
+                        Log?.LogInfo("AutoContinue: random scroll accelerated randomScrollTime " + cur + " -> " + _randomScrollTime);
+                    }
+                }
+            }
+            catch (Exception e)
+            {
+                if (Time.unscaledTime - _lastRandomLog > 5f)
+                {
+                    _lastRandomLog = Time.unscaledTime;
+                    Log?.LogWarning("AutoContinue: random scroll skip failed: " + FirstLine(e.ToString()));
+                }
+            }
+        }
+
         private static string ButtonText(Button b)
         {
             var sb = new System.Text.StringBuilder();
@@ -226,7 +266,9 @@ namespace AutoContinue
                     ["battle_enabled"] = "true",
                     ["battle_delay"] = "1.0",
                     ["result_enabled"] = "false",
-                    ["result_delay"] = "5.0"
+                    ["result_delay"] = "5.0",
+                    ["random_scroll_enabled"] = "false",
+                    ["random_scroll_time"] = "0.05"
                 };
                 var cfg = YamlConfig.Load(CfgName, defaults);
                 if (cfg.TryGetValue("announce_enabled", out string ae))
@@ -241,6 +283,14 @@ namespace AutoContinue
                     _resultEnabled = ParseBool(re, _resultEnabled);
                 if (cfg.TryGetValue("result_delay", out string rd))
                     _resultDelay = ParseFloat(rd, _resultDelay);
+                if (cfg.TryGetValue("random_scroll_enabled", out string rae))
+                    _randomScrollEnabled = ParseBool(rae, _randomScrollEnabled);
+                if (cfg.TryGetValue("random_scroll_time", out string rst))
+                {
+                    _randomScrollTime = ParseFloat(rst, _randomScrollTime);
+                    if (_randomScrollTime < 0.01f)
+                        _randomScrollTime = 0.01f;
+                }
             }
             catch (Exception e)
             {
@@ -248,7 +298,8 @@ namespace AutoContinue
             }
             Log?.LogInfo("AutoContinue cfg: announce=" + _announceEnabled + "/d=" + _announceDelay
                 + " battle=" + _battleEnabled + "/d=" + _battleDelay
-                + " result=" + _resultEnabled + "/d=" + _resultDelay);
+                + " result=" + _resultEnabled + "/d=" + _resultDelay
+                + " random_scroll=" + _randomScrollEnabled + "/t=" + _randomScrollTime);
         }
 
         private static bool ParseBool(string v, bool d)

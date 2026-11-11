@@ -13,7 +13,7 @@
     <ImplicitUsings>disable</ImplicitUsings>
     <RootNamespace>AutoContinue</RootNamespace>
     <AssemblyName>AutoContinue</AssemblyName>
-    <Version>0.5.0</Version>
+    <Version>0.6.0</Version>
     <OutputType>Library</OutputType>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
   </PropertyGroup>
@@ -40,6 +40,10 @@
     <!-- Button 点击对象 -->
     <Reference Include="UnityEngine.UI" Private="false">
       <HintPath>$(GameDir)\BepInEx\interop\UnityEngine.UI.dll</HintPath>
+    </Reference>
+    <!-- CharacterSelectorCtrl（预战面板里的随机角色轮播） -->
+    <Reference Include="MaJiang" Private="false">
+      <HintPath>$(GameDir)\BepInEx\interop\MaJiang.dll</HintPath>
     </Reference>
     <!-- TMP 文本（取按钮上的字：继续 / 点击继续） -->
     <Reference Include="Unity.TextMeshPro" Private="false">
