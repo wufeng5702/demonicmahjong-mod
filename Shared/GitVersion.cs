@@ -1,1 +1,1 @@
-static class GitVersion { internal const string Version = "0.6.0"; }
+static class GitVersion { internal const string Version = "0.7.0"; }
