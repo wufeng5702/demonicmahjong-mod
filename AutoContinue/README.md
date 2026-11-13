@@ -8,6 +8,7 @@
 - **Boss 战加载**：加载完成后自动点击【点击继续】进入对局。
 - **结算界面**：对局结算后自动点击【继续】（默认关闭）。
 - **随机模式角色轮播**：开始随机模式时把角色轮播总时长压到接近 0，直接落在随机角色上（默认关闭）。
+- **预战面板快捷键**：↑/↓ 一键跳到随机角色卡；空格等同点击【开始游戏】（限定预战面板）。键位可配。
 - **可配延迟**：每个环节独立配置延迟秒数，避免过早点击。
 
 ## 使用说明
@@ -20,6 +21,8 @@
 | Boss 战加载 | 自动点【点击继续】，延迟 1 秒 | `battle_enabled` / `battle_delay` |
 | 对局结算 | 默认关闭，延迟 5 秒 | `result_enabled` / `result_delay` |
 | 随机模式角色轮播 | 默认关闭，轮播时长压到 0.05 秒 | `random_scroll_enabled` / `random_scroll_time` |
+| 预战面板直跳随机角色 | 默认开启，↑/↓ 键 | `random_jump_enabled` / `random_jump_key` |
+| 预战面板开始游戏 | 默认开启，空格键 | `start_game_enabled` / `start_game_key` |
 
 改配置后重启游戏生效。
 
@@ -39,12 +42,24 @@
 把它的 `randomScrollTime`（轮播总时长）压到 `random_scroll_time`（默认 0.05 秒）。游戏仍负责
 随机选角并触发后续流程，只是动画近乎瞬时完成。配置值下限为 0.01 秒（避免除零）。
 
+预战面板快捷键每帧轮询（`GetKeyDown` 不能走 0.25 秒节奏）：
+
+- **直跳随机角色**：查找 `CharacterSelectorCtrl.cardInstances` 中 `TryCast<CharacterRandomCard>()`
+  成功的卡（兜底按游戏对象名含 `Random`/`随机` 判定），调用 `selector.OnCardClick(index)` 选中，
+  与正常点击卡牌走同一路径。日志：`AutoContinue: prewar jump -> random card index=N/M`。
+- **开始游戏**：查找 transform 路径含 `PreWar` 且按钮文本（归一化后）含「开始」的 `Button`，
+  触发 `onClick.Invoke()`——限定 `PreWar` 路径避免误触其他面板里的「开始」。日志：`AutoContinue: clicked Start btn=...`。
+- 键位是**逗号分隔的 KeyCode 名**，大小写不敏感，如 `UpArrow,DownArrow`、`Space`、`Mouse3`（第一个侧键，后退）
+  、`Mouse4`（第二个侧键，前进）、`Alpha1`、`KeypadEnter`。无效名会在日志里告警并跳过。
+- 若游戏关闭了 legacy Input 后端，热键会一次性禁用并告警（`prewar hotkeys disabled`），不影响其他功能。
+
 ## 日志输出
 
 ```
 [Info :AutoContinue] [AutoContinue] v0.6.0 loaded
-[Info :AutoContinue] AutoContinue cfg: announce=True/d=2 battle=True/d=1 result=False/d=5 random_scroll=False/t=0.05
+[Info :AutoContinue] AutoContinue cfg: announce=True/d=2 battle=True/d=1 result=False/d=5 random_scroll=False/t=0.05 random_jump=True/UpArrow+DownArrow start_game=True/Space
 [Info :AutoContinue] AutoContinue: clicked Battle btn=[xxx] text=[点击继续]
+[Info :AutoContinue] AutoContinue: prewar jump -> random card index=9/9
 ```
 
 ## 配置 — `BepInEx\plugins\AutoContinue.yml`
@@ -65,6 +80,12 @@ result_delay: 5.0
 # 随机模式角色轮播（默认关闭；开启后压到接近 0 即直接落到随机角色）
 random_scroll_enabled: false
 random_scroll_time: 0.05
+
+# 预战面板快捷键（逗号分隔的 KeyCode；Mouse3=第一个侧键 Mouse4=第二个侧键）
+random_jump_enabled: true
+random_jump_key: UpArrow,DownArrow
+start_game_enabled: true
+start_game_key: Space
 ```
 
 ## 兼容性

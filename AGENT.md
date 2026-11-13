@@ -11,7 +11,7 @@
 |-----|------|----------|
 | **ScorePreview** | 左上角 IMGUI 四行 HUD：`计分:` 镜像结算 / `和牌1/2/3:` 听牌预测 | `ScoreHud.cs` / `Prediction.cs` |
 | **SLMenuTrigger** | 牌堆耗尽且分数低于 Boss 时自动暂停游戏，给玩家手动 SL 时间 | `SLMenuTrigger.cs` / `Plugin.cs` |
-| **AutoContinue** | 自动跳过公告【继续】、对局【点击继续】与随机模式角色轮播（`random_scroll_enabled`/`random_scroll_time`） | `AutoSkip.cs` |
+| **AutoContinue** | 自动跳过公告【继续】、对局【点击继续】与随机模式角色轮播（`random_scroll_enabled`/`random_scroll_time`）；预战面板快捷键：↑/↓ 直跳随机角色卡、空格开始游戏（`random_jump_key`/`start_game_key`） | `AutoSkip.cs` |
 | **LingPreview** | 幻灵台附牌灵时提示变换效果（象/鼠/马灵逐牌对照） | `LingPanel.cs` / `LingTai.cs` |
 | **BanLingYongLimit** | 已解锁禁咒的四种稀有度封禁额度各额外增加 10（配置 count） | `Plugin.cs` / `QuotaPatch.cs` |
 
@@ -45,7 +45,7 @@ mod/
   Compatibility/           HybridCLR 启动兼容补丁（Preloader Finalizer，早于插件 Load）
   ScorePreview/            分数预览 mod（csproj/ScoreHud/Prediction/README）
   SLMenuTrigger/           自动暂停 mod（csproj/SLMenuTrigger/Plugin/README）
-  AutoContinue/            自动跳过 mod（公告【继续】/Boss 战【点击继续】/随机模式角色轮播；csproj/AutoSkip/README）
+  AutoContinue/            自动跳过 mod（公告【继续】/Boss 战【点击继续】/随机模式角色轮播/预战快捷键；csproj/AutoSkip/README）
   LingPreview/             幻灵台牌灵提示 mod（csproj/LingPanel/LingTai/README）
   BanLingYongLimit/         封禁额度 mod（TalentInt Postfix；保留原额度为 0 的未解锁天赋）
   assets/images/           文档图片统一目录；文件名为图片内容的 SHA-256 + 原格式扩展名
@@ -104,8 +104,9 @@ grep -aE "ScorePreview|SLMenuTrigger|AutoContinue|LingPreview|ting hook|Error" "
   开 `debug` 后再看 `[diag] Comp.Try …ms` 与 `hud -> 计分: …`。
 - SLMenuTrigger：`[SLMenuTrigger] v<版本> loaded` → `SLMenuTrigger cfg: enabled=True fontsize=24`
   → 牌堆耗尽时 `牌堆耗尽! Player < Boss. Pausing. TimeScale=0`。
-- AutoContinue：`[AutoContinue] v<版本> loaded` → `AutoContinue cfg: announce=True/d=2 … random_scroll=False/t=0.05`
-  → 点击时 `AutoContinue: clicked …`；随机模式开始时 `AutoContinue: random scroll accelerated randomScrollTime … -> 0.05`。
+- AutoContinue：`[AutoContinue] v<版本> loaded` → `AutoContinue cfg: announce=True/d=2 … random_scroll=False/t=0.05 random_jump=True/UpArrow+DownArrow start_game=True/Space`
+  → 点击时 `AutoContinue: clicked …`；随机模式开始时 `AutoContinue: random scroll accelerated randomScrollTime … -> 0.05`；
+  直跳随机角色 `AutoContinue: prewar jump -> random card index=N/M`；空格开始 `AutoContinue: clicked Start btn=…`。
 - LingPreview：`[LingPreview] v<版本> loaded` → `LingPanel active xoffset=… fontsize=… detail=…`
   → 进幻灵台选灵后看 `ling -> 象灵 … | ▶ 北风 → 南风`；开 `debug` 再看 `[probe] state …`
   （幻灵台当前状态）与 `[probe] ling=…`（该灵在游戏里的配置）。

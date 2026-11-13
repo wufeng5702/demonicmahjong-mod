@@ -13,7 +13,7 @@
     <ImplicitUsings>disable</ImplicitUsings>
     <RootNamespace>AutoContinue</RootNamespace>
     <AssemblyName>AutoContinue</AssemblyName>
-    <Version>0.6.0</Version>
+    <Version>0.7.0</Version>
     <OutputType>Library</OutputType>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
   </PropertyGroup>
@@ -48,6 +48,10 @@
     <!-- TMP 文本（取按钮上的字：继续 / 点击继续） -->
     <Reference Include="Unity.TextMeshPro" Private="false">
       <HintPath>$(GameDir)\BepInEx\interop\Unity.TextMeshPro.dll</HintPath>
+    </Reference>
+    <!-- UnityEngine.Input.GetKeyDown（预战面板快捷键） -->
+    <Reference Include="UnityEngine.InputLegacyModule" Private="false">
+      <HintPath>$(GameDir)\BepInEx\interop\UnityEngine.InputLegacyModule.dll</HintPath>
     </Reference>
   </ItemGroup>
 

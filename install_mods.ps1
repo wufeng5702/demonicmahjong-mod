@@ -82,7 +82,7 @@ function Pause-Exit([int]$code = 0) {
 # 仓库存档：id / 项目目录 / dll 名 / 说明
 $catalog = @(
     [pscustomobject]@{ Id = 1; Project = "ScorePreview"; Dll = "ScorePreview.dll"; Cfg = "ScorePreview.yml"; Desc = "分数预览（计分/和牌两行 HUD）" },
-    [pscustomobject]@{ Id = 2; Project = "AutoContinue"; Dll = "AutoContinue.dll"; Cfg = "AutoContinue.yml"; Desc = "自动跳过公告【继续】与对局【点击继续】与随机模式角色轮播" },
+    [pscustomobject]@{ Id = 2; Project = "AutoContinue"; Dll = "AutoContinue.dll"; Cfg = "AutoContinue.yml"; Desc = "自动跳过公告【继续】、对局【点击继续】，随机模式跳过轮播，预战面板快捷键" },
     [pscustomobject]@{ Id = 3; Project = "SLMenuTrigger"; Dll = "SLMenuTrigger.dll"; Cfg = "SLMenuTrigger.yml"; Desc = "低于 Boss 时自动暂停游戏让玩家手动 SL" },
     [pscustomobject]@{ Id = 4; Project = "LingPreview"; Dll = "LingPreview.dll"; Cfg = "LingPreview.yml"; Desc = "幻灵台附牌灵时提示变换效果（象/鼠/马灵逐牌对照）" },
     [pscustomobject]@{ Id = 5; Project = "BanLingYongLimit"; Dll = "BanLingYongLimit.dll"; Cfg = "BanLingYongLimit.yml"; Desc = "已解锁禁咒的四种稀有度封禁额度各额外增加 10" }
@@ -804,7 +804,14 @@ function Default-Cfg([string]$proj) {
             "`r`n" +
             "# 4. 随机模式开始时跳过角色轮播动画（默认关闭；开启后直接落到随机角色上）`r`n" +
             "random_scroll_enabled: false`r`n" +
-            "random_scroll_time: 0.05`r`n"
+            "random_scroll_time: 0.05`r`n" +
+            "`r`n" +
+            "# 5. 预战面板快捷键：直跳随机角色 / 开始游戏（默认 ↑/↓ 直跳、空格开始）`r`n" +
+            "#    键位为逗号分隔的 KeyCode 名；鼠标侧键 Mouse3=第一个侧键（后退） Mouse4=第二个侧键（前进）`r`n" +
+            "random_jump_enabled: true`r`n" +
+            "random_jump_key: UpArrow,DownArrow`r`n" +
+            "start_game_enabled: true`r`n" +
+            "start_game_key: Space`r`n"
         }
         "ScorePreview" { 
             return "# ScorePreview — 分数预览`r`n" +
