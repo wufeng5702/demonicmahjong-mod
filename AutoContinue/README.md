@@ -49,9 +49,11 @@
   与正常点击卡牌走同一路径。日志：`AutoContinue: prewar jump -> random card index=N/M`。
 - **开始游戏**：查找 transform 路径含 `PreWar` 且按钮文本（归一化后）含「开始」的 `Button`，
   触发 `onClick.Invoke()`——限定 `PreWar` 路径避免误触其他面板里的「开始」。日志：`AutoContinue: clicked Start btn=...`。
-- 键位是**逗号分隔的 KeyCode 名**，大小写不敏感，如 `UpArrow,DownArrow`、`Space`、`Mouse3`（第一个侧键，后退）
-  、`Mouse4`（第二个侧键，前进）、`Alpha1`、`KeypadEnter`。无效名会在日志里告警并跳过。
-- 若游戏关闭了 legacy Input 后端，热键会一次性禁用并告警（`prewar hotkeys disabled`），不影响其他功能。
+- 游戏只启用了新输入系统（Active Input Handling = Input System），热键直接走 InputSystem API
+  （键盘 `Keyboard.current[Key].wasPressedThisFrame`，鼠标走 `Mouse.current` 的 left/right/middle/back/forwardButton）。
+- 键位是**逗号分隔的按键名**，大小写不敏感：键盘用新输入系统 `Key` 名，如 `UpArrow`、`Space`、`A`、`Digit1`、`KeypadEnter`；
+  鼠标按钮 `Mouse0..Mouse4`：`0`=左键 `1`=右键 `2`=中键 `3`=Mouse3 第一个侧键（后退）`4`=Mouse4 第二个侧键（前进）。
+  无效名会在日志里告警并跳过。
 
 ## 日志输出
 
@@ -81,7 +83,7 @@ result_delay: 5.0
 random_scroll_enabled: false
 random_scroll_time: 0.05
 
-# 预战面板快捷键（逗号分隔的 KeyCode；Mouse3=第一个侧键 Mouse4=第二个侧键）
+# 预战面板快捷键（逗号分隔的按键名；Mouse3=第一个侧键 Mouse4=第二个侧键）
 random_jump_enabled: true
 random_jump_key: UpArrow,DownArrow
 start_game_enabled: true

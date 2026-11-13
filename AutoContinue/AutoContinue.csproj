@@ -49,9 +49,9 @@
     <Reference Include="Unity.TextMeshPro" Private="false">
       <HintPath>$(GameDir)\BepInEx\interop\Unity.TextMeshPro.dll</HintPath>
     </Reference>
-    <!-- UnityEngine.Input.GetKeyDown（预战面板快捷键） -->
-    <Reference Include="UnityEngine.InputLegacyModule" Private="false">
-      <HintPath>$(GameDir)\BepInEx\interop\UnityEngine.InputLegacyModule.dll</HintPath>
+    <!-- 新输入系统（游戏只启用了它；UnityEngine.Input legacy 不可用） -->
+    <Reference Include="Unity.InputSystem" Private="false">
+      <HintPath>$(GameDir)\BepInEx\interop\Unity.InputSystem.dll</HintPath>
     </Reference>
   </ItemGroup>
 

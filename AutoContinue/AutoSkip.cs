@@ -15,7 +15,7 @@ namespace AutoContinue
     ///   3) 对局结算后的结算/查看详情界面 → 自动点【继续】；
     ///   4) 随机模式开始时的角色轮播动画 → 加速到 random_scroll_time 秒（默认 0.05，近乎瞬时落点；功能默认关闭）；
     ///   5) 预战面板快捷键：random_jump_key 直跳随机角色卡（默认 ↑/↓），start_game_key 开始游戏（默认 空格）。
-    ///      键位可配（逗号分隔 KeyCode 名，支持鼠标侧键 Mouse3=第一个侧键 Mouse4=第二个侧键）。
+    ///      键位可配（逗号分隔的新输入系统 Key 名，如 UpArrow/Space/A；Mouse0..Mouse4 = 左/右/中/后(第一个侧键)/前(第二个侧键)）。
     /// 由 dll 同目录 AutoContinue.yml 控制开关与延迟（改后重启生效）。
     /// </summary>
     public class AutoSkip : MonoBehaviour
@@ -35,14 +35,26 @@ namespace AutoContinue
         private float _randomScrollTime = 0.05f;
         private float _lastRandomLog;
         private bool _randomJumpEnabled = true;
-        private List<KeyCode> _randomJumpKeys = new List<KeyCode> { KeyCode.UpArrow, KeyCode.DownArrow };
+        private List<HotKey> _randomJumpKeys = new List<HotKey> { HotKey.Keyboard(UnityEngine.InputSystem.Key.UpArrow), HotKey.Keyboard(UnityEngine.InputSystem.Key.DownArrow) };
         private bool _startGameEnabled = true;
-        private List<KeyCode> _startGameKeys = new List<KeyCode> { KeyCode.Space };
+        private List<HotKey> _startGameKeys = new List<HotKey> { HotKey.Keyboard(UnityEngine.InputSystem.Key.Space) };
         private bool _preWarKeysBroken;
 
         private float _nextScan;
 
         private enum Kind { None, Announce, Battle, Result, Start }
+
+        internal struct HotKey
+        {
+            public bool IsMouse;
+            public UnityEngine.InputSystem.Key Key;
+            public int MouseButton; // 0=左 1=右 2=中 3=后(第一个侧键) 4=前(第二个侧键)
+
+            public static HotKey Keyboard(UnityEngine.InputSystem.Key key) => new HotKey { Key = key };
+            public static HotKey Mouse(int button) => new HotKey { IsMouse = true, MouseButton = button };
+
+            public override string ToString() => IsMouse ? "Mouse" + MouseButton : Key.ToString();
+        }
         private Kind _cur;
         private float _curFirstSeen;
         private Kind _lastTriggered;
@@ -240,8 +252,8 @@ namespace AutoContinue
         }
 
         /// <summary>
-        /// 预战面板快捷键。legacy Input 后端若被游戏关闭会抛异常；捕获后一次性禁用并告警，
-        /// 不至于每帧刷 InvalidOperationException。
+        /// 预战面板快捷键。游戏只启用了新输入系统（Active Input Handling = Input System），
+        /// legacy UnityEngine.Input 会抛 InvalidOperationException，这里直接走 InputSystem API。
         /// </summary>
         [Il2CppInterop.Runtime.Attributes.HideFromIl2Cpp]
         private void HandlePreWarKeys()
@@ -260,12 +272,30 @@ namespace AutoContinue
             }
         }
 
-        [Il2CppInterop.Runtime.Attributes.HideFromIl2Cpp]
-        private static bool AnyKeyDown(List<KeyCode> keys)
+        private static bool AnyKeyDown(List<HotKey> keys)
         {
+            var keyboard = UnityEngine.InputSystem.Keyboard.current;
+            var mouse = UnityEngine.InputSystem.Mouse.current;
             for (int i = 0; i < keys.Count; i++)
-                if (UnityEngine.Input.GetKeyDown(keys[i]))
-                    return true;
+            {
+                var hk = keys[i];
+                if (hk.IsMouse)
+                {
+                    if (mouse == null) continue;
+                    var btn = hk.MouseButton == 0 ? mouse.leftButton
+                        : hk.MouseButton == 1 ? mouse.rightButton
+                        : hk.MouseButton == 2 ? mouse.middleButton
+                        : hk.MouseButton == 3 ? mouse.backButton
+                        : hk.MouseButton == 4 ? mouse.forwardButton
+                        : null;
+                    if (btn != null && btn.wasPressedThisFrame) return true;
+                }
+                else
+                {
+                    if (keyboard == null) continue;
+                    if (keyboard[hk.Key].wasPressedThisFrame) return true;
+                }
+            }
             return false;
         }
 
@@ -425,19 +455,26 @@ namespace AutoContinue
                 + " start_game=" + _startGameEnabled + "/" + KeyListText(_startGameKeys));
         }
 
-        /// <summary>解析逗号分隔的 KeyCode 列表；全是无效名时保留 fallback。</summary>
-        private static List<KeyCode> ParseKeyList(string value, List<KeyCode> fallback)
+        /// <summary>解析逗号分隔的热键列表；全是无效名时保留 fallback。
+        /// 名称使用新输入系统 Key（UpArrow/DownArrow/Space/A/Digit1 …，大小写不敏感），
+        /// Mouse0..Mouse4 = 左/右/中/后（第一个侧键，后退）/前（第二个侧键，前进）。</summary>
+        private static List<HotKey> ParseKeyList(string value, List<HotKey> fallback)
         {
-            var list = new List<KeyCode>();
+            var list = new List<HotKey>();
             if (!string.IsNullOrWhiteSpace(value))
             {
                 foreach (var raw in value.Split(','))
                 {
                     string s = raw.Trim();
                     if (s.Length == 0) continue;
-                    if (Enum.TryParse<KeyCode>(s, true, out var kc))
+                    if (s.Length > 5 && string.Equals(s.Substring(0, 5), "Mouse", StringComparison.OrdinalIgnoreCase)
+                        && int.TryParse(s.Substring(5), out int btn) && btn >= 0 && btn <= 4)
                     {
-                        list.Add(kc);
+                        list.Add(HotKey.Mouse(btn));
+                    }
+                    else if (Enum.TryParse<UnityEngine.InputSystem.Key>(s, true, out var key))
+                    {
+                        list.Add(HotKey.Keyboard(key));
                     }
                     else
                     {
@@ -448,7 +485,7 @@ namespace AutoContinue
             return list.Count > 0 ? list : fallback;
         }
 
-        private static string KeyListText(List<KeyCode> keys)
+        private static string KeyListText(List<HotKey> keys)
         {
             var parts = new string[keys.Count];
             for (int i = 0; i < keys.Count; i++)

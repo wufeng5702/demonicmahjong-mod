@@ -807,7 +807,7 @@ function Default-Cfg([string]$proj) {
             "random_scroll_time: 0.05`r`n" +
             "`r`n" +
             "# 5. 预战面板快捷键：直跳随机角色 / 开始游戏（默认 ↑/↓ 直跳、空格开始）`r`n" +
-            "#    键位为逗号分隔的 KeyCode 名；鼠标侧键 Mouse3=第一个侧键（后退） Mouse4=第二个侧键（前进）`r`n" +
+            "#    键位为逗号分隔的按键名；Mouse3=第一个侧键（后退） Mouse4=第二个侧键（前进）`r`n" +
             "random_jump_enabled: true`r`n" +
             "random_jump_key: UpArrow,DownArrow`r`n" +
             "start_game_enabled: true`r`n" +
