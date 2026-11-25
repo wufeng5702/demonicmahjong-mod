@@ -85,7 +85,8 @@ $catalog = @(
     [pscustomobject]@{ Id = 2; Project = "AutoContinue"; Dll = "AutoContinue.dll"; Cfg = "AutoContinue.yml"; Desc = "自动跳过公告【继续】、对局【点击继续】，随机模式跳过轮播，预战面板快捷键" },
     [pscustomobject]@{ Id = 3; Project = "SLMenuTrigger"; Dll = "SLMenuTrigger.dll"; Cfg = "SLMenuTrigger.yml"; Desc = "低于 Boss 时自动暂停游戏让玩家手动 SL" },
     [pscustomobject]@{ Id = 4; Project = "LingPreview"; Dll = "LingPreview.dll"; Cfg = "LingPreview.yml"; Desc = "幻灵台附牌灵时提示变换效果（象/鼠/马灵逐牌对照）" },
-    [pscustomobject]@{ Id = 5; Project = "BanLingYongLimit"; Dll = "BanLingYongLimit.dll"; Cfg = "BanLingYongLimit.yml"; Desc = "已解锁禁咒的四种稀有度封禁额度各额外增加 10" }
+    [pscustomobject]@{ Id = 5; Project = "BanLingYongLimit"; Dll = "BanLingYongLimit.dll"; Cfg = "BanLingYongLimit.yml"; Desc = "已解锁禁咒的四种稀有度封禁额度各额外增加 10" },
+    [pscustomobject]@{ Id = 6; Project = "RoleGrowth"; Dll = "RoleGrowth.dll"; Cfg = "RoleGrowth.yml"; Desc = "角色主动技能局内成长持久化（水晶兰·贩酒，重启后保留成长）" }
 )
 
 Write-Host "== DemonicMahjong Mod 安装器 ==" -ForegroundColor Cyan
