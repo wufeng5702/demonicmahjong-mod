@@ -12,6 +12,7 @@
 | **SLMenuTrigger** | 牌堆耗尽且对局分数低于 Boss 时自动暂停游戏 | 给予玩家手动执行 SL 的时间；默认开启，可通过 `SLMenuTrigger.yml` 关闭 |
 | **LingPreview** | 幻灵台附牌灵时提示**变换效果**      | 象/鼠/马灵逐牌对照（`东风 → 西风`）；只在幻灵台出现 |
 | **BanLingYongLimit** | 提高封禁灵俑额度 | 已解锁的四种禁咒各额外增加 **10**，通过 `count` 配置 |
+| **RoleGrowth** | 角色主动技能局内成长持久化 | 水晶兰·贩酒的成长跨重启保留；状态存 `RoleGrowthState.json`；目前需手动编译安装 |
 
 各自的详细文档见：
 - [ScorePreview/README.md](ScorePreview/README.md)
@@ -19,6 +20,7 @@
 - [SLMenuTrigger/README.md](SLMenuTrigger/README.md)
 - [LingPreview/README.md](LingPreview/README.md)
 - [BanLingYongLimit/README.md](BanLingYongLimit/README.md)
+- [RoleGrowth/README.md](RoleGrowth/README.md)
 
 ## 快速开始（一键安装 / 卸载）
 1. **下载**  
@@ -136,7 +138,7 @@ mod/
   tools/compiler-licenses/             捆绑编译器的第三方许可文本（CI 打包时塞进 tools\compiler）
   tools/compiler/                      捆绑编译器（只在 release 包里，不入库）
   .env                                 DEMONIC_MAHJONG_DIR=<游戏安装目录>（不入库，本机才需要）
-  AGENT.md                             写给 AI/协作者的开发笔记（架构事实、坑、验证口径）
+  AGENTS.md                             写给 AI/协作者的开发笔记（架构事实、坑、验证口径）
 ```
 
 游戏安装目录的真实路径只写在仓库根 `.env`（已被 `.gitignore` 忽略，所以不做成链接）；

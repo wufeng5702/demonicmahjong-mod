@@ -1,4 +1,4 @@
-# AGENT.md — DemonicMahjong Mod 工作区
+# AGENTS.md — DemonicMahjong Mod 工作区
 
 本目录承载该游戏的 **BepInEx 6 (IL2CPP)** 插件开发。本文件只记录 mod 工作本身的架构事实、
 坑与流程，供后续会话快速上手。
@@ -14,6 +14,7 @@
 | **AutoContinue** | 自动跳过公告【继续】、对局【点击继续】与随机模式角色轮播（`random_scroll_enabled`/`random_scroll_time`）；预战面板快捷键：↑/↓ 直跳随机角色卡、空格开始游戏（`random_jump_key`/`start_game_key`） | `AutoSkip.cs` |
 | **LingPreview** | 幻灵台附牌灵时提示变换效果（象/鼠/马灵逐牌对照） | `LingPanel.cs` / `LingTai.cs` |
 | **BanLingYongLimit** | 已解锁禁咒的四种稀有度封禁额度各额外增加 10（配置 count） | `Plugin.cs` / `QuotaPatch.cs` |
+| **RoleGrowth** | 角色主动技能局内成长持久化（水晶兰·贩酒，重启保留） | `GrowthPatches.cs` / `GrowthStore.cs` / `README.md` |
 
 启动兼容补丁在 `Compatibility/`，安装到 `BepInEx/patchers/DemonicMahjong.Compatibility.dll`；
 由安装器自动安装。它只引用框架，所以可以在 interop 生成前编译。
@@ -37,7 +38,7 @@ release.yml 发版时把 tag 写进两者（tag 格式 `vX.Y.Z`），本地改�
 
 ```
 mod/
-  AGENT.md                 本文件（唯一交接文档）
+  AGENTS.md                本文件（唯一交接文档）
   .env                     <本机可改，不入库> 个人路径（DEMONIC_MAHJONG_DIR=游戏目录）
   Shared/                  共享工具库（StringTruncator / NumberParser / TransformPath / YamlConfig /
                            FanTextParser / ScoreFormula / UiText / LingRules / GitVersion）
@@ -48,6 +49,7 @@ mod/
   AutoContinue/            自动跳过 mod（公告【继续】/Boss 战【点击继续】/随机模式角色轮播/预战快捷键；csproj/AutoSkip/README）
   LingPreview/             幻灵台牌灵提示 mod（csproj/LingPanel/LingTai/README）
   BanLingYongLimit/         封禁额度 mod（TalentInt Postfix；保留原额度为 0 的未解锁天赋）
+  RoleGrowth/               角色主动技能成长持久化 mod（GrowthPatches/GrowthStore，状态文件 RoleGrowthState.json）
   assets/images/           文档图片统一目录；文件名为图片内容的 SHA-256 + 原格式扩展名
   install_mods.ps1         一键安装/卸载脚本（仓库根只留这一组入口）
   tools/modbat/            四个 mod 的 build.bat/install.bat 共用驱动；不放根目录，免得被当成入口
