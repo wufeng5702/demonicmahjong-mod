@@ -83,7 +83,7 @@ namespace InventoryStats
                 _style = new GUIStyle
                 {
                     fontSize = FontSize,
-                    wordWrap = true,
+                    wordWrap = false,
                     padding = new RectOffset(10, 10, 6, 6)
                 };
                 _background = new Texture2D(1, 1);
@@ -94,11 +94,29 @@ namespace InventoryStats
             }
 
             const float margin = 12f;
-            float width = Mathf.Min(_style.CalcSize(_content).x, Mathf.Max(1f, Screen.width - 2f * margin));
-            float height = _style.CalcHeight(_content, width);
-            float bottom = Mathf.Max(margin, Screen.height - height - margin);
+            // 统计固定为三行，测量和绘制都使用不自动换行的尺寸。
+            var size = _style.CalcSize(_content);
+            float width = Mathf.Ceil(size.x);
+            float height = Mathf.Ceil(size.y);
+            float availableWidth = Mathf.Max(1f, Screen.width - 2f * margin);
+            float availableHeight = Mathf.Max(1f, Screen.height - 2f * margin);
+            float scale = Mathf.Min(1f, Mathf.Min(availableWidth / width, availableHeight / height));
+            float bottom = Mathf.Max(margin, Screen.height - height * scale - margin);
             float y = Mathf.Lerp(bottom, margin, YOffset);
-            GUI.Label(new Rect(margin, y, width, height), _content, _style);
+            var bounds = new Rect(margin, y, width, height);
+            if (scale == 1f)
+            {
+                GUI.Label(bounds, _content, _style);
+                return;
+            }
+
+            var matrix = GUI.matrix;
+            try
+            {
+                GUIUtility.ScaleAroundPivot(new Vector2(scale, scale), new Vector2(margin, y));
+                GUI.Label(bounds, _content, _style);
+            }
+            finally { GUI.matrix = matrix; }
         }
 
         private void OnDestroy()
