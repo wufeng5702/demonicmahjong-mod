@@ -12,6 +12,8 @@ namespace InventoryStats
     {
         internal static ManualLogSource Log;
         internal static bool AlwaysShow;
+        internal static float YOffset;
+        internal static int FontSize;
 
         private const float PollInterval = 0.25f;
 
@@ -80,7 +82,8 @@ namespace InventoryStats
             {
                 _style = new GUIStyle
                 {
-                    fontSize = 18,
+                    fontSize = FontSize,
+                    wordWrap = true,
                     padding = new RectOffset(10, 10, 6, 6)
                 };
                 _background = new Texture2D(1, 1);
@@ -90,9 +93,12 @@ namespace InventoryStats
                 _style.normal.textColor = Color.white;
             }
 
-            var size = _style.CalcSize(_content);
             const float margin = 12f;
-            GUI.Label(new Rect(margin, Screen.height - size.y - margin, size.x, size.y), _content, _style);
+            float width = Mathf.Min(_style.CalcSize(_content).x, Mathf.Max(1f, Screen.width - 2f * margin));
+            float height = _style.CalcHeight(_content, width);
+            float bottom = Mathf.Max(margin, Screen.height - height - margin);
+            float y = Mathf.Lerp(bottom, margin, YOffset);
+            GUI.Label(new Rect(margin, y, width, height), _content, _style);
         }
 
         private void OnDestroy()

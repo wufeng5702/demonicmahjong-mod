@@ -868,7 +868,13 @@ function Default-Cfg([string]$proj) {
         "InventoryStats" {
             return "# InventoryStats — 牌库与遗物统计（改后重启游戏生效）`r`n" +
                 "# bag = 仅打开背包时显示；always = 地图和对局内常驻`r`n" +
-                "display: bag`r`n"
+                "display: bag`r`n" +
+                "`r`n" +
+                "# HUD 沿屏幕左侧从下往上移动：0 = 左下，0.5 = 左侧居中，1 = 左上`r`n" +
+                "yoffset: 0`r`n" +
+                "`r`n" +
+                "# HUD 字体大小（8–96）`r`n" +
+                "fontsize: 24`r`n"
         }
         default { return $null }
     }

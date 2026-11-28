@@ -135,7 +135,10 @@ try {
     $newConfig = Default-Cfg 'BanLingYongLimit'
     Assert-True ($newConfig -match '(?m)^enabled: true\r?$') 'Ban quota mod is not enabled by default'
     Assert-True ($newConfig -match '(?m)^count: 10\r?$') 'Ban quota mod default is not 10'
-    Assert-True ((Default-Cfg 'InventoryStats') -match '(?m)^display: bag\r?$') 'InventoryStats is not bag-only by default'
+    $inventoryConfig = Default-Cfg 'InventoryStats'
+    Assert-True ($inventoryConfig -match '(?m)^display: bag\r?$') 'InventoryStats is not bag-only by default'
+    Assert-True ($inventoryConfig -match '(?m)^yoffset: 0\r?$') 'InventoryStats is not anchored to the bottom by default'
+    Assert-True ($inventoryConfig -match '(?m)^fontsize: 24\r?$') 'InventoryStats default font size is not 24'
     $catalog = @(1..4 | ForEach-Object { [pscustomobject]@{ Id = $_; Project = "Mod$_" } })
     foreach ($inputText in @('1,2,3,4', '1 2 3 4', '1，2，3，4', '1、2、3、4', '1;2;3;4', '1；2；3；4')) {
         Assert-True ((@(Parse-Mods $inputText).Id -join ',') -eq '1,2,3,4') "Multi-mod separator rejected: $inputText"
