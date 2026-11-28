@@ -134,7 +134,7 @@ namespace LingPreview
 
             BaoLingPayload payload = SelectedPayload(tai, ui);
             if (payload == null) return null;          // 还没选灵
-            if (payload.IsBao) return null;            // 宝牌不改牌面，不提示
+            if (payload.baoLingType == BaoLingPayload.BaoLingType.BaoPai) return null; // 宝牌不改牌面，不提示
 
             var names = CollectNames(ui);
 
@@ -582,7 +582,8 @@ namespace LingPreview
                             var p = info.TryCast<BaoLingPayload>();
                             if (p != null)
                                 sb.Append("(id=").Append(p.id).Append(",nd=").Append(p.numberDiff)
-                                  .Append(",bao=").Append(p.IsBao).Append(",name=").Append(p.Name).Append(")");
+                                  .Append(",bao=").Append(p.baoLingType == BaoLingPayload.BaoLingType.BaoPai)
+                                  .Append(",name=").Append(p.Name).Append(")");
                             else
                                 sb.Append("(not-baoLingPayload)");
                         }
