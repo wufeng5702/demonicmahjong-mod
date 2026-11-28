@@ -12,6 +12,7 @@
 | **SLMenuTrigger** | 牌堆耗尽且对局分数低于 Boss 时自动暂停游戏 | 给予玩家手动执行 SL 的时间；默认开启，可通过 `SLMenuTrigger.yml` 关闭 |
 | **LingPreview** | 幻灵台附牌灵时提示**变换效果**      | 象/鼠/马灵逐牌对照（`东风 → 西风`）；只在幻灵台出现 |
 | **BanLingYongLimit** | 提高封禁灵俑额度 | 已解锁的四种禁咒各额外增加 **10**，通过 `count` 配置 |
+| **InventoryStats** | 牌库与遗物统计 HUD | 念灵＋牌灵和宝牌均显示 `总数(负面数)`，另显示诅咒遗物数；默认仅背包显示 |
 
 各自的详细文档见：
 - [ScorePreview/README.md](ScorePreview/README.md)
@@ -19,6 +20,7 @@
 - [SLMenuTrigger/README.md](SLMenuTrigger/README.md)
 - [LingPreview/README.md](LingPreview/README.md)
 - [BanLingYongLimit/README.md](BanLingYongLimit/README.md)
+- [InventoryStats/README.md](InventoryStats/README.md)
 
 ## 快速开始（一键安装 / 卸载）
 1. **下载**  
@@ -61,7 +63,7 @@ powershell -File install_mods.ps1 -Mods 1,2 -Compiler csc          :: 强制用�
 powershell -File install_mods.ps1 -Mods 1,2 -Compiler sdk          :: 强制用本机 .NET SDK
 ```
 
-在 PowerShell 中也可直接调用脚本：`.\install_mods.ps1 -u -Mods 1,2,3,4,5`。
+在 PowerShell 中也可直接调用脚本：`.\install_mods.ps1 -u -Mods 1,2,3,4,5,6`。
 `-Mods` 支持逗号、空格、顿号、分号分隔或 PowerShell 数组；菜单中的无效编号会提示重新输入，
 `0` 或空回车取消。若不需要菜单，明确传入 `-Mods` 即可；`-RemoveBepInEx` 仍需确认后才删除框架。
 
@@ -130,6 +132,7 @@ mod/
   AutoContinue/                        自动跳过 mod（源码 + 各自 README）
   LingPreview/                         幻灵台牌灵提示 mod（源码 + README + 薄包装）
   BanLingYongLimit/                     封禁灵俑额度 mod（默认每种稀有度额外增加 10）
+  InventoryStats/                      牌库与遗物统计 HUD（默认仅打开背包时显示）
   tools/modbat/                        各 mod build.bat/install.bat 共用的驱动（不放根目录，免得当成入口）
   tools/tests/                         安装器回归测试（模拟进程，不启动游戏）
   tools/dumptypes/                     反编译类型转储工具（开发用）

@@ -34,7 +34,7 @@ function Test-Uninstall([string]$name, [string]$options, [string]$inputLines, [i
                         'BepInEx\core\BepInEx.Core.dll', 'dotnet\keep.txt', 'Custom\Mods\keep.txt')) {
         [IO.File]::WriteAllText((Join-Path $game $file), 'fixture')
     }
-    foreach ($mod in @('ScorePreview', 'AutoContinue', 'SLMenuTrigger', 'LingPreview', 'BanLingYongLimit')) {
+    foreach ($mod in @('ScorePreview', 'AutoContinue', 'SLMenuTrigger', 'LingPreview', 'BanLingYongLimit', 'InventoryStats')) {
         foreach ($extension in @('dll', 'yml')) {
             [IO.File]::WriteAllText((Join-Path $game "BepInEx\plugins\$mod.$extension"), 'fixture')
         }
@@ -44,7 +44,7 @@ function Test-Uninstall([string]$name, [string]$options, [string]$inputLines, [i
     $info = [Diagnostics.ProcessStartInfo]::new()
     $info.FileName = $exe
     if ($DirectArray) {
-        $command = "& '$($file.Replace("'", "''"))' -u -Mods @(1,2,3,4,5) -GameDir '$($game.Replace("'", "''"))'"
+        $command = "& '$($file.Replace("'", "''"))' -u -Mods @(1,2,3,4,5,6) -GameDir '$($game.Replace("'", "''"))'"
         $info.Arguments = "-NoProfile -ExecutionPolicy Bypass -Command `"$command`""
     }
     else { $info.Arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$file`" $options -GameDir `"$game`"" }
@@ -78,9 +78,10 @@ function Test-Uninstall([string]$name, [string]$options, [string]$inputLines, [i
         $dlls = @(Get-ChildItem -Path (Join-Path $game 'BepInEx\plugins') -Filter '*.dll' -ErrorAction SilentlyContinue)
         $cfgs = @(Get-ChildItem -Path (Join-Path $game 'BepInEx\plugins') -Filter '*.yml' -ErrorAction SilentlyContinue)
         Assert-True ($dlls.Count -eq $remaining -and $cfgs.Count -eq $remaining) "$name removed an unexpected set of mods`n$text"
-        if ($name -eq 'new-mod-only') {
-            Assert-True (-not (Test-Path (Join-Path $game 'BepInEx\plugins\BanLingYongLimit.dll'))) 'New mod was not uninstalled'
-            Assert-True (Test-Path (Join-Path $game 'BepInEx\plugins\ScorePreview.dll')) 'Uninstalling new mod removed another mod'
+        if ($name -eq 'inventory-stats-only') {
+            Assert-True (-not (Test-Path (Join-Path $game 'BepInEx\plugins\InventoryStats.dll'))) 'InventoryStats was not uninstalled'
+            Assert-True (-not (Test-Path (Join-Path $game 'BepInEx\plugins\InventoryStats.yml'))) 'InventoryStats configuration was not uninstalled'
+            Assert-True (Test-Path (Join-Path $game 'BepInEx\plugins\BanLingYongLimit.dll')) 'Uninstalling InventoryStats removed another mod'
         }
         Assert-True ((Test-Path (Join-Path $game 'BepInEx')) -eq $framework) "$name removed or preserved the wrong framework state"
         Assert-True ((Test-Path (Join-Path $game 'winhttp.dll')) -eq $framework) "$name mishandled winhttp.dll"
@@ -97,27 +98,27 @@ $originalInputEncoding = [Console]::InputEncoding
 try {
     # Process.StandardInput inherits the parent's encoding; a UTF-8 BOM would prefix the first menu choice.
     [Console]::InputEncoding = [Text.UTF8Encoding]::new($false)
-    Test-Uninstall 'u-menu' '-u' "1,2,3,4,5`n`n" 0 -menu $true
-    Test-Uninstall 'long-menu' '-Uninstall' "1;2;3;4;5`n`n" 0 -menu $true
-    Test-Uninstall 'unicode-menu' '-u' ((1..5 -join [char]0x3001) + "`n`n") 0 -menu $true
-    Test-Uninstall 'remove-confirmed' '-u -RemoveBepInEx' "1,2,3,4,5`ny`n`n" 0 -framework $false -menu $true
-    Test-Uninstall 'remove-declined' '-u -RemoveBepInEx' "1,2,3,4,5`nn`n`n" 0 -menu $true
-    Test-Uninstall 'retry-menu' '-u' "invalid`n1,2`n`n" 3 -menu $true
-    Test-Uninstall 'explicit-mods' '-u -Mods 1,2,3,4,5' '' 0
-    Test-Uninstall 'new-mod-only' '-u -Mods 5' '' 4
+    Test-Uninstall 'u-menu' '-u' "1,2,3,4,5,6`n`n" 0 -menu $true
+    Test-Uninstall 'long-menu' '-Uninstall' "1;2;3;4;5;6`n`n" 0 -menu $true
+    Test-Uninstall 'unicode-menu' '-u' ((1..6 -join [char]0x3001) + "`n`n") 0 -menu $true
+    Test-Uninstall 'remove-confirmed' '-u -RemoveBepInEx' "1,2,3,4,5,6`ny`n`n" 0 -framework $false -menu $true
+    Test-Uninstall 'remove-declined' '-u -RemoveBepInEx' "1,2,3,4,5,6`nn`n`n" 0 -menu $true
+    Test-Uninstall 'retry-menu' '-u' "invalid`n1,2`n`n" 4 -menu $true
+    Test-Uninstall 'explicit-mods' '-u -Mods 1,2,3,4,5,6' '' 0
+    Test-Uninstall 'inventory-stats-only' '-u -Mods 6' '' 5
     Test-Uninstall 'direct-array' '' '' 0 -DirectArray
-    Test-Uninstall 'invalid-mods' '-u -Mods 1,invalid,2' '' 5 -exitCode 1
-    Test-Uninstall 'cancel-menu' '-u' "0`n`n" 5 -menu $true
-    Test-Uninstall 'eof-menu' '-u' '' 5 -exitCode 1 -menu $true
-    Test-Uninstall 'redirected-menu' '-u' '' 5
-    Test-Uninstall 'check-explicit' '-CheckUpdate' '' 5
-    Test-Uninstall 'check-menu' '' "c`n`n" 5 -menu $true
-    Test-Uninstall 'update-explicit' '-Update' '' 5
-    Test-Uninstall 'update-menu' '' "u`n`n" 5 -menu $true
-    Test-Uninstall 'update-uninstall-conflict' '-Update -u' '' 5 -exitCode 1
-    Test-Uninstall 'update-check-conflict' '-Update -CheckUpdate' '' 5 -exitCode 1
-    Test-Uninstall 'update-mods-conflict' '-Update -Mods 1' '' 5 -exitCode 1
-    Test-Uninstall 'update-framework-conflict' '-Update -RemoveBepInEx' '' 5 -exitCode 1
+    Test-Uninstall 'invalid-mods' '-u -Mods 1,invalid,2' '' 6 -exitCode 1
+    Test-Uninstall 'cancel-menu' '-u' "0`n`n" 6 -menu $true
+    Test-Uninstall 'eof-menu' '-u' '' 6 -exitCode 1 -menu $true
+    Test-Uninstall 'redirected-menu' '-u' '' 6
+    Test-Uninstall 'check-explicit' '-CheckUpdate' '' 6
+    Test-Uninstall 'check-menu' '' "c`n`n" 6 -menu $true
+    Test-Uninstall 'update-explicit' '-Update' '' 6
+    Test-Uninstall 'update-menu' '' "u`n`n" 6 -menu $true
+    Test-Uninstall 'update-uninstall-conflict' '-Update -u' '' 6 -exitCode 1
+    Test-Uninstall 'update-check-conflict' '-Update -CheckUpdate' '' 6 -exitCode 1
+    Test-Uninstall 'update-mods-conflict' '-Update -Mods 1' '' 6 -exitCode 1
+    Test-Uninstall 'update-framework-conflict' '-Update -RemoveBepInEx' '' 6 -exitCode 1
     Write-Host "Installer CLI tests passed ($script:passed assertions)." -ForegroundColor Green
 }
 finally {
