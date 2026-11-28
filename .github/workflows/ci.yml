@@ -34,7 +34,7 @@ jobs:
               run: |
                   ver=$(sed -n 's/.*Version = "\([^"]*\)".*/\1/p' Shared/GitVersion.cs)
                   echo "GitVersion.cs: $ver"
-                  for csproj in ScorePreview/ScorePreview.csproj SLMenuTrigger/SLMenuTrigger.csproj AutoContinue/AutoContinue.csproj LingPreview/LingPreview.csproj BanLingYongLimit/BanLingYongLimit.csproj Compatibility/Compatibility.csproj; do
+                  for csproj in ScorePreview/ScorePreview.csproj SLMenuTrigger/SLMenuTrigger.csproj AutoContinue/AutoContinue.csproj LingPreview/LingPreview.csproj BanLingYongLimit/BanLingYongLimit.csproj InventoryStats/InventoryStats.csproj Compatibility/Compatibility.csproj; do
                     csv=$(sed -n 's/.*<Version>\([^<]*\)<\/Version>.*/\1/p' "$csproj")
                     if [ "$csv" != "$ver" ]; then
                       echo "::error::$csproj <Version>=$csv, expected $ver (run set-version.ps1)"

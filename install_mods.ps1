@@ -66,7 +66,7 @@ function Read-Input([string]$prompt) {
     if ($Host.Name -eq 'ConsoleHost') {
         Write-Host "$($prompt): " -NoNewline
         $line = [Console]::ReadLine()
-        if ($null -eq $line) { throw "控制台输入已结束。可用 -Mods 1,2,3,4,5 明确指定编号，或直接运行 .\install_mods.ps1。" }
+        if ($null -eq $line) { throw "控制台输入已结束。可用 -Mods 1,2 明确指定编号，或直接运行 .\install_mods.ps1。" }
         return $line
     }
     return (Read-Host $prompt)
@@ -85,7 +85,8 @@ $catalog = @(
     [pscustomobject]@{ Id = 2; Project = "AutoContinue"; Dll = "AutoContinue.dll"; Cfg = "AutoContinue.yml"; Desc = "自动跳过公告【继续】、对局【点击继续】，随机模式跳过轮播，预战面板快捷键" },
     [pscustomobject]@{ Id = 3; Project = "SLMenuTrigger"; Dll = "SLMenuTrigger.dll"; Cfg = "SLMenuTrigger.yml"; Desc = "低于 Boss 时自动暂停游戏让玩家手动 SL" },
     [pscustomobject]@{ Id = 4; Project = "LingPreview"; Dll = "LingPreview.dll"; Cfg = "LingPreview.yml"; Desc = "幻灵台附牌灵时提示变换效果（象/鼠/马灵逐牌对照）" },
-    [pscustomobject]@{ Id = 5; Project = "BanLingYongLimit"; Dll = "BanLingYongLimit.dll"; Cfg = "BanLingYongLimit.yml"; Desc = "已解锁禁咒的四种稀有度封禁额度各额外增加 10" }
+    [pscustomobject]@{ Id = 5; Project = "BanLingYongLimit"; Dll = "BanLingYongLimit.dll"; Cfg = "BanLingYongLimit.yml"; Desc = "已解锁禁咒的四种稀有度封禁额度各额外增加 10" },
+    [pscustomobject]@{ Id = 6; Project = "InventoryStats"; Dll = "InventoryStats.dll"; Cfg = "InventoryStats.yml"; Desc = "牌库念灵/牌灵、宝牌及诅咒遗物统计（默认仅背包显示）" }
 )
 
 Write-Host "== DemonicMahjong Mod 安装器 ==" -ForegroundColor Cyan
@@ -782,7 +783,6 @@ function Publish-Mod($mod, [string]$game, [switch]$Patcher) {
 }
 
 # 默认配置模板：此处的键/默认值必须与各 mod 源码里 YamlConfig.Load 的 defaults 字典
-# （ScoreHud.LoadConfig / MenuTriggerScript.LoadConfig / AutoSkip.LoadConfig / LingPanel.LoadConfig / BanLingYongLimit.Plugin.Load）
 # 保持一致，
 # 改任何一边都要同步另一边（运行时以 mod 内 defaults 为准，本函数只用于首次生成带注释的文件）。
 function Default-Cfg([string]$proj) {
@@ -864,6 +864,17 @@ function Default-Cfg([string]$proj) {
             "# 每种稀有度的额外额度；实际额度 = 游戏内置额度 + max(0, count)`r`n" +
             "# count 为 0 时使用内置额度；未解锁的稀有度仍为 0`r`n" +
             "count: 10`r`n"
+        }
+        "InventoryStats" {
+            return "# InventoryStats — 牌库与遗物统计（改后重启游戏生效）`r`n" +
+                "# bag = 仅打开背包时显示；always = 地图和对局内常驻`r`n" +
+                "display: bag`r`n" +
+                "`r`n" +
+                "# HUD 沿屏幕左侧从下往上移动：0 = 左下，0.5 = 左侧居中，1 = 左上`r`n" +
+                "yoffset: 0`r`n" +
+                "`r`n" +
+                "# HUD 字体大小（8–96）`r`n" +
+                "fontsize: 24`r`n"
         }
         default { return $null }
     }
